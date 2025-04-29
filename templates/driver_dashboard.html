@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head><title>Driver Dashboard</title></head>
+<body>
+    <h1>Welcome, {{ email }} (Driver)</h1>
+    <a href="{{ url_for('logout') }}">Logout</a>
+    {% if driver %}
+        <h2>Your Driver Profile:</h2>
+        <ul>
+            <li>Name: {{ driver.Driver_Name }}</li>
+            <li>Address: {{ driver.Driver_Address }}</li>
+            <li>Vehicle: {{ driver.Vehicle }}</li>
+            <li>Make: {{ driver.Make }}</li>
+            <li>Color: {{ driver.Vehicle_Color }}</li>
+            <li>Model: {{ driver.Model }}</li>
+            <li>License #: {{ driver.License_Num }}</li>
+            <li>Driver Rating: {{ driver.Driver_Rating }}</li>
+            <li>Overall Rating: {{ driver.Overall_Rating }}</li>
+            <li>Timeliness: {{ driver.Timeliness }}</li>
+            <li>Friendliness: {{ driver.Friendliness }}</li>
+            <li>Accuracy: {{ driver.Accuracy }}</li>
+            <li>Range: {{ driver.Driver_Range }}</li>
+            <li>Tips: ${{ driver.Driver_Tips }}</li>
+        </ul>
+    {% else %}
+        <p>No driver profile found for your account.</p>
+    {% endif %}
+</body>
+</html>
