@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login | TableDash</title>
+    <style>
+        .danger { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h2>Login to TableDash</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul>
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    <form method="POST">
+        Email: <input type="text" name="email" required><br>
+        Password: <input type="password" name="password" required><br>
+        <input type="submit" value="Login">
+    </form>
+</body>
+</html>
