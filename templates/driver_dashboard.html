@@ -1,29 +1,198 @@
 <!DOCTYPE html>
 <html>
-<head><title>Driver Dashboard</title></head>
+<head>
+    <title>Driver Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html, body {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #fafafa;
+        }
+        body {
+            min-height: 100vh;
+            min-width: 100vw;
+            box-sizing: border-box;
+        }
+        #container {
+            min-height: 100vh;
+            min-width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 24px 32px 8px 32px;
+            border-bottom: 1px solid #eee;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            background: white;
+            padding-left: 32px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: black;
+            text-decoration: none;
+            font-weight: bold;
+            border-bottom: 3px solid transparent;
+            margin-right: 10px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .tab.active {
+            color: #E23724;
+            border-bottom: 3px solid #E23724;
+        }
+        main {
+            flex: 1;
+            width: 100vw;
+            box-sizing: border-box;
+            padding: 40px 0 0 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .dashboard-content {
+            width: 100%;
+            max-width: 760px;
+            padding: 0 24px 60px 24px;
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        /* For the map */
+        #map { height: 410px; width: 100%; max-width: 700px; margin: 0 auto 20px auto; border-radius: 10px; box-shadow: 0 2px 8px #ddd;}
+        .btn-deliver {
+            display: block;
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto 32px auto;
+            background: #E23724;
+            color: #fff;
+            border: none;
+            padding: 16px 0;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            letter-spacing: 1px;
+        }
+        .btn-deliver:hover {
+            background: #c41e1d;
+        }
+        ul { padding-left: 24px; }
+        @media (max-width: 900px){
+            #map,.btn-deliver, .dashboard-content { max-width: 100vw!important; }
+        }
+        @media (max-width: 650px){
+            header, .tabs, .dashboard-content { padding-left: 6vw; padding-right: 6vw;}
+        }
+        @media (max-width: 480px){
+            #map { height: 220px;}
+        }
+    </style>
+    <!-- Leaflet CSS for map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+</head>
 <body>
-    <h1>Welcome, {{ email }} (Driver)</h1>
-    <a href="{{ url_for('logout') }}">Logout</a>
-    {% if driver %}
-        <h2>Your Driver Profile:</h2>
-        <ul>
-            <li>Name: {{ driver.Driver_Name }}</li>
-            <li>Address: {{ driver.Driver_Address }}</li>
-            <li>Vehicle: {{ driver.Vehicle }}</li>
-            <li>Make: {{ driver.Make }}</li>
-            <li>Color: {{ driver.Vehicle_Color }}</li>
-            <li>Model: {{ driver.Model }}</li>
-            <li>License #: {{ driver.License_Num }}</li>
-            <li>Driver Rating: {{ driver.Driver_Rating }}</li>
-            <li>Overall Rating: {{ driver.Overall_Rating }}</li>
-            <li>Timeliness: {{ driver.Timeliness }}</li>
-            <li>Friendliness: {{ driver.Friendliness }}</li>
-            <li>Accuracy: {{ driver.Accuracy }}</li>
-            <li>Range: {{ driver.Driver_Range }}</li>
-            <li>Tips: ${{ driver.Driver_Tips }}</li>
-        </ul>
-    {% else %}
-        <p>No driver profile found for your account.</p>
-    {% endif %}
+<div id="container">
+    <header>
+        <h1 style="margin:0;">Welcome, {{ driver.Driver_Name }} (Driver)</h1>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </header>
+    <div class="tabs">
+        <a href="{{ url_for('driver_dashboard', tab='delivery') }}" class="tab {% if active_tab == 'delivery' %}active{% endif %}">Delivery</a>
+        <a href="{{ url_for('driver_dashboard', tab='schedule') }}" class="tab {% if active_tab == 'schedule' %}active{% endif %}">Schedule</a>
+        <a href="{{ url_for('driver_dashboard', tab='account') }}" class="tab {% if active_tab == 'account' %}active{% endif %}">Account</a>
+        <a href="{{ url_for('driver_dashboard', tab='rating') }}" class="tab {% if active_tab == 'rating' %}active{% endif %}">Rating</a>
+        <a href="{{ url_for('driver_dashboard', tab='earnings') }}" class="tab {% if active_tab == 'earnings' %}active{% endif %}">Earnings</a>
+    </div>
+    <main>
+        <div class="dashboard-content">
+        {% if active_tab == 'delivery' %}
+            <h2>Delivery</h2>
+            <p>This is the Delivery tab (default).</p>
+            <!-- Map for current driver location -->
+            <div id="map"></div>
+            <button class="btn-deliver">Deliver Now</button>
+            <!-- Leaflet JS for map -->
+            <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+            <script>
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(showPosition, showError);
+                } else {
+                    document.getElementById("map").innerHTML = "Geolocation is not supported by this browser.";
+                }
+
+                function showPosition(position) {
+                    var lat = position.coords.latitude;
+                    var lon = position.coords.longitude;
+                    var map = L.map('map').setView([lat, lon], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+                    L.marker([lat, lon]).addTo(map)
+                        .bindPopup("You are here").openPopup();
+                }
+
+                function showError(error) {
+                    let msg;
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            msg = "User denied the request for Geolocation.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            msg = "Location information is unavailable.";
+                            break;
+                        case error.TIMEOUT:
+                            msg = "The request to get user location timed out.";
+                            break;
+                        default:
+                            msg = "An unknown error occurred.";
+                            break;
+                    }
+                    document.getElementById("map").innerHTML = msg;
+                }
+            </script>
+        {% elif active_tab == 'schedule' %}
+            <h2>Schedule</h2>
+            <p>Your schedule info here.</p>
+        {% elif active_tab == 'account' %}
+            <h2>Account</h2>
+            <ul>
+                <li>Name: {{ driver.Driver_Name }}</li>
+                <li>Address: {{ driver.Driver_Address }}</li>
+                <li>Vehicle: {{ driver.Vehicle }}, {{ driver.Make }}, {{ driver.Model }}, {{ driver.Vehicle_Color }}</li>
+                <li>License #: {{ driver.License_Num }}</li>
+                <li>Range: {{ driver.Driver_Range }}</li>
+            </ul>
+        {% elif active_tab == 'rating' %}
+            <h2>Rating</h2>
+            <ul>
+                <li>Driver Rating: {{ driver.Driver_Rating }}</li>
+                <li>Overall Rating: {{ driver.Overall_Rating }}</li>
+                <li>Timeliness: {{ driver.Timeliness }}</li>
+                <li>Friendliness: {{ driver.Friendliness }}</li>
+                <li>Accuracy: {{ driver.Accuracy }}</li>
+            </ul>
+        {% elif active_tab == 'earnings' %}
+            <h2>Earnings</h2>
+            <ul>
+                <li>Tips: ${{ driver.Driver_Tips }}</li>
+                <!-- Add earnings breakdown if you wish -->
+            </ul>
+        {% endif %}
+        </div>
+    </main>
+</div>
 </body>
 </html>

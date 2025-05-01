@@ -65,6 +65,8 @@ def driver_dashboard():
         return redirect(url_for('login'))
     user_id = session.get('user_id')
 
+    tab = request.args.get('tab', 'delivery')  # Default tab is 'delivery'
+
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM driver WHERE User_ID = %s", (user_id,))
@@ -72,7 +74,7 @@ def driver_dashboard():
     cursor.close()
     conn.close()
 
-    return render_template('driver_dashboard.html', email=session['user'], driver=driver_info)
+    return render_template('driver_dashboard.html', email=session['user'], driver=driver_info, active_tab=tab)
 
 @app.route('/business_dashboard')
 def business_dashboard():
