@@ -164,8 +164,50 @@
                 }
             </script>
         {% elif active_tab == 'schedule' %}
-            <h2>Schedule</h2>
-            <p>Your schedule info here.</p>
+        <h2>Schedule</h2>
+        <div class="weekday-circles">
+            {% for day in days %}
+    <a href="{{ url_for('driver_dashboard', tab='schedule', selected_day=day.full) }}"
+        class="weekday-circle {% if day.full == selected_day %}active{% endif %}">
+        {{ day.short }}
+    </a>
+{% endfor %}
+        </div>
+        <style>
+            .weekday-circles {
+                display: flex;
+                justify-content: center;
+                gap: 18px;
+                margin: 30px 0 35px 0;
+            }
+            .weekday-circle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                background: #f5f5f5;
+                font-weight: bold;
+                color: #333;
+                text-decoration: none;
+                font-size: 1.05em;
+                border: 2.5px solid transparent;
+                transition: color 0.15s, border 0.15s, background 0.15s;
+                box-shadow: 0 1px 4px #ecdcdc52;
+                user-select: none;
+            }
+            .weekday-circle.active {
+                background: #E23724;
+                color: #fff;
+                border: 2.5px solid #E23724;
+            }
+            .weekday-circle:hover:not(.active) {
+                border: 2.5px solid #E23724;
+                color: #E23724;
+                background: #fff;
+            }
+        </style>
         {% elif active_tab == 'account' %}
             <h2>Account</h2>
             <ul>

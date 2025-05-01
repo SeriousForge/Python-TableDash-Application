@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 import mysql.connector
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -65,7 +66,25 @@ def driver_dashboard():
         return redirect(url_for('login'))
     user_id = session.get('user_id')
 
-    tab = request.args.get('tab', 'delivery')  # Default tab is 'delivery'
+    tab = request.args.get('tab', 'delivery')
+
+    # Get which weekday is selected or default to today's
+    selected_day = request.args.get('selected_day', None)
+    days = [
+        {'full': 'Sunday', 'short': 'Sun'},
+        {'full': 'Monday', 'short': 'Mon'},
+        {'full': 'Tuesday', 'short': 'Tue'},
+        {'full': 'Wednesday', 'short': 'Wed'},
+        {'full': 'Thursday', 'short': 'Thu'},
+        {'full': 'Friday', 'short': 'Fri'},
+        {'full': 'Saturday', 'short': 'Sat'}
+    ]
+    # Default: if nothing picked, use today
+    if selected_day is None:
+        selected_idx = (datetime.today().weekday() + 1) % 7
+        selected_day = days[selected_idx]['full']
+    else:
+        selected_idx = next(i for i, d in enumerate(days) if d['full'] == selected_day)
 
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
@@ -74,6 +93,14 @@ def driver_dashboard():
     cursor.close()
     conn.close()
 
+    return render_template(
+        'driver_dashboard.html',
+        email=session['user'],
+        driver=driver_info,
+        active_tab=tab,
+        days=days,
+        selected_day=selected_day
+    )
     return render_template('driver_dashboard.html', email=session['user'], driver=driver_info, active_tab=tab)
 
 @app.route('/business_dashboard')
