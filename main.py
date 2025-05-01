@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import mysql.connector
 from datetime import datetime, timedelta
 from math import radians, sin, cos, sqrt, atan2
@@ -79,6 +79,9 @@ def driver_dashboard():
         week_dates.append({
             'short': d.strftime('%a'),      # Sun, Mon, Tue, etc.
             'date': d.day,                  # Day of month (30, 1, ...)
+            'iso': d.strftime('%Y-%m-%d'),  # full ISO date for POST
+            'long': d.strftime('%A'),       # Full day-of-week for db
+            'month': d.strftime('%b')       # 'May', etc.
         })
 
     # Determine the selected day (index 0-6)
@@ -128,20 +131,48 @@ def nearby_cities():
         {'name': 'Weslaco', 'lat': 26.1595, 'lon': -97.9908}
         # ... add as many as needed!
     ]
-    # Calculate distance for each city
     for city in cities:
-        city['distance'] = haversine(user_lon, user_lat, city['lon'], city['lat'])
-    # Sort ascending (nearest first)
+        km = haversine(user_lon, user_lat, city['lon'], city['lat'])
+        mi = km * 0.621371      # Convert kilometers to miles
+        city['distance'] = mi
     cities.sort(key=lambda x: x['distance'])
-    # Current location is always at top (the closest city)
     html = ""
     shown = 0
     for city in cities:
-        html += f"""<div class="city-slot"><b>{city['name']}</b> ({city['distance']:.1f} km away)</div>"""
+        html += f"""<div class="city-slot" data-city="{city['name']}"><b>{city['name']}</b> ({city['distance']:.1f} miles away)</div>"""
         shown += 1
-        if shown >= 5:  # Show at least 5 cities
+        if shown >= 5:
             break
     return html
+@app.route('/save_availability', methods=['POST'])
+def save_availability():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in.'}), 401
+
+    user_id = session['user_id']
+    city = request.form['city']
+    dateiso = request.form['dateiso']    # yyyy-mm-dd
+    day_of_week = request.form['day_of_week']  # "Monday", ...
+    start_time = request.form['start_time']    # HH:MM
+    end_time = request.form['end_time']
+
+    # Optional: save city in Notes column
+    notes = city
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO availability (User_ID, Date, Day_of_Week, Start_Time, End_Time, Notes)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, dateiso, day_of_week, start_time, end_time, notes))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Delivery Time Saved'})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'message': 'Failed to Save'}), 500
 @app.route('/business_dashboard')
 def business_dashboard():
     if 'user' not in session or session.get('user_type') != 'business':

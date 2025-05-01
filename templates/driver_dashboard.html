@@ -271,6 +271,28 @@
                 <div id="city-list">
                     Loading nearby cities...
                 </div>
+                <!-- Modal for setting delivery time -->
+                <div id="slotModal" class="modal" style="display:none;">
+                    <div class="modal-content">
+                        <button type="button"
+                        onclick="document.getElementById('slotModal').style.display='none'"
+                        style="position:absolute;top:16px;right:18px;font-size:1.8em;color:#aaa;background:none;border:none;cursor:pointer;line-height:1;z-index:2;">×</button>
+                        <div id="modal-date" style="text-align:center;font-size:1.2em;font-weight:bold;"></div>
+                        <div id="modal-city" style="text-align:center;font-size:1.1em;margin-bottom:15px;"></div>
+                        <form id="slotForm" method="POST" action="{{ url_for('save_availability') }}">
+                            <input type="hidden" name="city" id="input-city">
+                            <input type="hidden" name="dateiso" id="input-dateiso">
+                            <input type="hidden" name="day_of_week" id="input-dayofweek">
+                            <label>Start Time:<br><input type="time" name="start_time" required></label><br><br>
+                            <label>End Time:<br><input type="time" name="end_time" required></label><br><br>
+                            <button type="submit"
+                                style="width:100%;background:#E23724;color:#fff;padding:14px 0;margin-top:16px;border:none;border-radius:6px;font-weight:bold;font-size:1.1em;">Save
+                                Delivery Time</button>
+                        </form>
+                    </div>
+                </div>
+                <!-- Success/Error message -->
+                <div id="flash-message" class="flash-message" style="display:none;"></div>
                 <style>
                     .weekday-labels {
                         display: flex;
@@ -323,6 +345,71 @@
                         color: #E23724;
                         background: #fff;
                     }
+
+                    .modal {
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                        top: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.18);
+                        display: none;
+                        justify-content: center;
+                        /* centers horizontally */
+                        align-items: center;
+                        /* centers vertically */
+                        z-index: 2000;
+                    }
+
+                    .modal-content {
+                        background: #fff;
+                        padding: 28px 18px 24px 18px;
+                        border-radius: 22px;
+                        width: 100%;
+                        max-width: 385px;
+                        margin: 0 auto;
+                        /* for extra safety */
+                        box-shadow: 0 6px 24px #8884;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        animation: fadeInCenter 0.23s cubic-bezier(.86, 0, .07, 1);
+                    }
+
+                    @keyframes fadeInCenter {
+                        0% {
+                            transform: scale(0.92) translateY(30px);
+                            opacity: 0;
+                        }
+
+                        100% {
+                            transform: scale(1) translateY(0);
+                            opacity: 1;
+                        }
+                    }
+
+                    .flash-message {
+                        position: fixed;
+                        top: 25px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        padding: 16px 26px;
+                        border-radius: 18px;
+                        background: #2dbe60;
+                        color: #fff;
+                        font-weight: 500;
+                        box-shadow: 0 4px 20px #2dbe6055;
+                        z-index: 2100;
+                        font-size: 1.1rem;
+                        opacity: 0.96;
+                        display: none;
+                        transition: opacity 0.25s;
+                    }
+
+                    .flash-message.error {
+                        background: #e74c3c;
+                        box-shadow: 0 4px 20px #e74c3c55;
+                    }
                 </style>
                 {% elif active_tab == 'account' %}
                 <h2>Account</h2>
@@ -353,6 +440,60 @@
             </div>
         </main>
     </div>
+    <script>
+        const weekDates = JSON.parse('{{ week_dates|tojson | safe }}');
+
+        // Modal open on .city-slot click
+        document.addEventListener('click', function (e) {
+            if (e.target.classList.contains('city-slot')) {
+                // Find the selected .weekday-circle and its index (so we know what day)
+                const selected = document.querySelector('.weekday-circle.active');
+                let selectedIdx = Array.from(selected.parentElement.children).indexOf(selected);
+                const thisDay = weekDates[selectedIdx];
+
+                // Fill modal fields/labels
+                document.getElementById('modal-date').textContent = `${thisDay.month} ${thisDay.date}`;
+                document.getElementById('modal-city').textContent = e.target.getAttribute('data-city');
+                document.getElementById('input-city').value = e.target.getAttribute('data-city');
+                document.getElementById('input-dateiso').value = thisDay.iso;
+                document.getElementById('input-dayofweek').value = thisDay.long;
+
+                document.getElementById('slotModal').style.display = 'flex';
+            }
+        });
+
+        // Hide modal when clicking outside modal-content
+        document.getElementById('slotModal').onclick = function (e) {
+            if (e.target === this) this.style.display = 'none';
+        };
+
+        // AJAX post for Save Delivery Time
+        document.getElementById('slotForm').onsubmit = function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('{{ url_for("save_availability") }}', {
+                method: 'POST',
+                body: formData
+            })
+                .then(resp => resp.json())
+                .then(res => {
+                    document.getElementById('slotModal').style.display = 'none';
+                    showFlash(res.message, res.success ? '' : 'error');
+                }).catch(() => {
+                    document.getElementById('slotModal').style.display = 'none';
+                    showFlash('Failed to Save', 'error');
+                });
+        };
+
+        // Flash message helper
+        function showFlash(msg, cls) {
+            let flash = document.getElementById('flash-message');
+            flash.textContent = msg;
+            flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
+            flash.style.display = 'block';
+            setTimeout(() => { flash.style.display = 'none'; }, 1800);
+        }
+    </script>
 </body>
 
 </html>
