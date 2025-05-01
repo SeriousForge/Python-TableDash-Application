@@ -144,6 +144,57 @@ def nearby_cities():
         if shown >= 5:
             break
     return html
+@app.route('/user_scheduled_times', methods=['POST'])
+def user_scheduled_times():
+    if 'user_id' not in session:
+        return '', 401
+
+    user_id = session['user_id']
+    req = request.get_json()
+    selected_date = req['dateiso']    # ISO string, e.g. 2024-05-20
+
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT Start_Time, End_Time, Notes
+        FROM availability
+        WHERE User_ID = %s AND Date = %s
+        ORDER BY Start_Time
+    """, (user_id, selected_date))
+    slots = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    def time_to_str(val):
+        if hasattr(val, 'strftime'):
+            # It's a time object
+            return val.strftime('%I:%M %p').lstrip('0')
+        elif isinstance(val, timedelta):
+            # Convert to time and then use strftime
+            total_seconds = int(val.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            fake_time = datetime(1900, 1, 1, hours, minutes)
+            return fake_time.strftime('%I:%M %p').lstrip('0')
+        elif isinstance(val, str):
+            # fallback: naive slice string
+            # (optional: parse string to time for am/pm, but this covers most cases)
+            parsed = datetime.strptime(val[:5], '%H:%M')
+            return parsed.strftime('%I:%M %p').lstrip('0')
+        else:
+            return str(val)
+
+    html = ""
+    if not slots:
+        html = "<div style='text-align:center;color:#999;margin-top:24px;'>No scheduled times for this day.</div>"
+    else:
+        for s in slots:
+            html += f"""
+            <div class="scheduled-slot">
+                <b>{s['Notes']}</b><br>
+                {time_to_str(s['Start_Time'])} - {time_to_str(s['End_Time'])}
+            </div>"""
+    return html
 @app.route('/save_availability', methods=['POST'])
 def save_availability():
     if 'user_id' not in session:

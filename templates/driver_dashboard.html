@@ -73,6 +73,7 @@
             width: 100%;
             max-width: 760px;
             padding: 0 24px 60px 24px;
+            position: relative;
         }
 
         h1,
@@ -268,15 +269,60 @@
                     </a>
                     {% endfor %}
                 </div>
+                <!-- Scheduled Button -->
+                <!-- Under weekday circles (and labels), before city-list: -->
+                <div style="display: flex; justify-content: center; margin-bottom: 18px;">
+                    <button id="scheduled-btn" class="scheduled-btn">Scheduled</button>
+                </div>
+                <div id="scheduled-panel" class="scheduled-overlay">
+                    <button id="close-scheduled"
+                        style="position:absolute;top:17px;right:18px;font-size:1.5em;color:#aaa;background:none;border:none;cursor:pointer;">×</button>
+                    <div id="scheduled-list" style="margin-top:0px;"></div>
+                </div>
+                <!-- Scheduled Panel (hidden by default) -->
+
+                <style>
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100vw);
+                        }
+
+                        to {
+                            transform: translateX(0);
+                        }
+                    }
+
+                    .scheduled-slot {
+                        background: #fff;
+                        border-radius: 7px;
+                        box-shadow: 0 2px 12px #e2e2e2;
+                        margin: 17px auto 0 auto;
+                        max-width: 320px;
+                        padding: 13px 19px;
+                        font-size: 1.12em;
+                        text-align: center;
+                        color: #222;
+                        position: relative;
+                    }
+
+                    #scheduled-panel {
+                        /* (panel-specific overrides added above inline, see JS for toggle!) */
+                    }
+
+                    #scheduled-btn.red {
+                        background: #E23724;
+                        color: #fff;
+                        border: 2px solid #E23724;
+                    }
+                </style>
                 <div id="city-list">
                     Loading nearby cities...
                 </div>
                 <!-- Modal for setting delivery time -->
                 <div id="slotModal" class="modal" style="display:none;">
                     <div class="modal-content">
-                        <button type="button"
-                        onclick="document.getElementById('slotModal').style.display='none'"
-                        style="position:absolute;top:16px;right:18px;font-size:1.8em;color:#aaa;background:none;border:none;cursor:pointer;line-height:1;z-index:2;">×</button>
+                        <button type="button" onclick="document.getElementById('slotModal').style.display='none'"
+                            style="position:absolute;top:16px;right:18px;font-size:1.8em;color:#aaa;background:none;border:none;cursor:pointer;line-height:1;z-index:2;">×</button>
                         <div id="modal-date" style="text-align:center;font-size:1.2em;font-weight:bold;"></div>
                         <div id="modal-city" style="text-align:center;font-size:1.1em;margin-bottom:15px;"></div>
                         <form id="slotForm" method="POST" action="{{ url_for('save_availability') }}">
@@ -388,6 +434,73 @@
                         }
                     }
 
+                    #scheduled-panel {
+                        /* no box-shadow here */
+                        background: #fafafa;
+                        border-radius: 18px;
+                        width: 400px;
+                        max-width: 98vw;
+                        position: absolute;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        top: 200px;
+                        /* adjusts the vertical offset - tweak as needed */
+                        z-index: 2102;
+                        padding: 24px 14px 18px 14px;
+                        overflow-y: auto;
+                        display: none;
+                    }
+
+                    .scheduled-slot {
+                        background: #fff;
+                        border-radius: 7px;
+                        /* removed box-shadow */
+                        margin: 0 auto 0 auto;
+                        max-width: 320px;
+                        padding: 13px 19px;
+                        font-size: 1.12em;
+                        text-align: center;
+                        color: #222;
+                        position: relative;
+                    }
+
+                    .scheduled-btn {
+                        background: #fff;
+                        border: 2px solid #E23724;
+                        color: #E23724;
+                        font-weight: bold;
+                        border-radius: 22px;
+                        padding: 8px 26px;
+                        font-size: 1.06em;
+                        outline: none;
+                        transition: background 0.16s, color 0.16s;
+                        cursor: pointer;
+                    }
+
+                    .scheduled-btn.active {
+                        background: #E23724;
+                        color: #fff;
+                        border: 2px solid #E23724;
+                    }
+
+                    /* No box-shadow on the slots either */
+
+                    .scheduled-overlay {
+                        display: none;
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: #fafafa;
+                        z-index: 2222;
+                        padding-top: 56px;
+                        /* room for the button and some margin */
+                        overflow-y: auto;
+                        box-shadow: none;
+                        /* No shadow */
+                    }
+
                     .flash-message {
                         position: fixed;
                         top: 25px;
@@ -462,6 +575,59 @@
             }
         });
 
+        const scheduledBtn = document.getElementById('scheduled-btn');
+const scheduledPanel = document.getElementById('scheduled-panel');
+const scheduledList = document.getElementById('scheduled-list');
+const closeScheduled = document.getElementById('close-scheduled');
+
+// Helper: Get current selected day index & week's ISO
+function getSelectedDayIso() {
+    const active = document.querySelector('.weekday-circle.active');
+    const idx = Array.from(active.parentElement.children).indexOf(active);
+    return weekDates[idx].iso;
+}
+
+// Open/close logic
+scheduledBtn.onclick = function() {
+    if (scheduledPanel.style.display === 'block') {
+        scheduledPanel.style.display = 'none';
+        scheduledBtn.classList.remove('active');
+        return;
+    }
+    scheduledPanel.style.display = 'block';
+    scheduledBtn.classList.add('active');
+    scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+    fetch('/user_scheduled_times', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateiso: getSelectedDayIso() })
+    })
+    .then(r => r.text())
+    .then(html => scheduledList.innerHTML = html);
+};
+
+closeScheduled.onclick = function() {
+    scheduledPanel.style.display = 'none';
+    scheduledBtn.classList.remove('active');
+};
+
+// If user clicks day, reload list if panel is open
+document.querySelectorAll('.weekday-circle').forEach((circle, i) => {
+    circle.addEventListener('click', function(e){
+        setTimeout(()=>{
+            if (scheduledPanel.style.display === 'block') {
+                scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+                fetch('/user_scheduled_times', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dateiso: weekDates[i].iso })
+                })
+                .then(r => r.text())
+                .then(html => scheduledList.innerHTML = html);
+            }
+        }, 120);
+    });
+});
         // Hide modal when clicking outside modal-content
         document.getElementById('slotModal').onclick = function (e) {
             if (e.target === this) this.style.display = 'none';
