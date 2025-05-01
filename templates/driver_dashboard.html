@@ -165,49 +165,69 @@
             </script>
         {% elif active_tab == 'schedule' %}
         <h2>Schedule</h2>
-        <div class="weekday-circles">
-            {% for day in days %}
-    <a href="{{ url_for('driver_dashboard', tab='schedule', selected_day=day.full) }}"
-        class="weekday-circle {% if day.full == selected_day %}active{% endif %}">
-        {{ day.short }}
-    </a>
-{% endfor %}
-        </div>
-        <style>
-            .weekday-circles {
-                display: flex;
-                justify-content: center;
-                gap: 18px;
-                margin: 30px 0 35px 0;
-            }
-            .weekday-circle {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 48px;
-                height: 48px;
-                border-radius: 50%;
-                background: #f5f5f5;
-                font-weight: bold;
-                color: #333;
-                text-decoration: none;
-                font-size: 1.05em;
-                border: 2.5px solid transparent;
-                transition: color 0.15s, border 0.15s, background 0.15s;
-                box-shadow: 0 1px 4px #ecdcdc52;
-                user-select: none;
-            }
-            .weekday-circle.active {
-                background: #E23724;
-                color: #fff;
-                border: 2.5px solid #E23724;
-            }
-            .weekday-circle:hover:not(.active) {
-                border: 2.5px solid #E23724;
-                color: #E23724;
-                background: #fff;
-            }
-        </style>
+<!-- Weekday short names row -->
+<div class="weekday-labels">
+    {% for day in week_dates %}
+        <div class="weekday-label">{{ day.short }}</div>
+    {% endfor %}
+</div>
+<!-- Day of month in circles -->
+<div class="weekday-circles">
+    {% for day in week_dates %}
+        <a href="{{ url_for('driver_dashboard', tab='schedule', selected_idx=loop.index0) }}"
+           class="weekday-circle {% if loop.index0 == selected_idx|int %}active{% endif %}">
+            {{ day.date }}
+        </a>
+    {% endfor %}
+</div>
+<style>
+.weekday-labels {
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    margin: 0 0 3px 0;
+}
+.weekday-label {
+    width: 48px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.02em;
+    color: #333;
+}
+.weekday-circles {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin: 0 0 35px 0;
+}
+.weekday-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #f5f5f5;
+    font-weight: bold;
+    color: #333;
+    text-decoration: none;
+    font-size: 1.08em;
+    border: 2.5px solid transparent;
+    transition: color 0.15s, border 0.15s, background 0.15s;
+    box-shadow: 0 1px 4px #ecdcdc52;
+    user-select: none;
+}
+.weekday-circle.active {
+    background: #E23724;
+    color: #fff;
+    border: 2.5px solid #E23724;
+}
+.weekday-circle:hover:not(.active) {
+    border: 2.5px solid #E23724;
+    color: #E23724;
+    background: #fff;
+}
+</style>
         {% elif active_tab == 'account' %}
             <h2>Account</h2>
             <ul>

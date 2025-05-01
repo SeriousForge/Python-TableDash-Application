@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 import mysql.connector
-from datetime import datetime
+from datetime import datetime, timedelta
+from math import radians, sin, cos, sqrt, atan2
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -68,23 +69,24 @@ def driver_dashboard():
 
     tab = request.args.get('tab', 'delivery')
 
-    # Get which weekday is selected or default to today's
-    selected_day = request.args.get('selected_day', None)
-    days = [
-        {'full': 'Sunday', 'short': 'Sun'},
-        {'full': 'Monday', 'short': 'Mon'},
-        {'full': 'Tuesday', 'short': 'Tue'},
-        {'full': 'Wednesday', 'short': 'Wed'},
-        {'full': 'Thursday', 'short': 'Thu'},
-        {'full': 'Friday', 'short': 'Fri'},
-        {'full': 'Saturday', 'short': 'Sat'}
-    ]
-    # Default: if nothing picked, use today
-    if selected_day is None:
-        selected_idx = (datetime.today().weekday() + 1) % 7
-        selected_day = days[selected_idx]['full']
+    # Calculate calendar for this week (Sunday ... Saturday)
+    today = datetime.today()
+    weekday_idx = (today.weekday() + 1) % 7  # Sunday=0, ..., Saturday=6
+    week_start = today - timedelta(days=weekday_idx)
+    week_dates = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        week_dates.append({
+            'short': d.strftime('%a'),      # Sun, Mon, Tue, etc.
+            'date': d.day,                  # Day of month (30, 1, ...)
+        })
+
+    # Determine the selected day (index 0-6)
+    selected_idx = request.args.get('selected_idx')
+    if selected_idx is None:
+        selected_idx = weekday_idx
     else:
-        selected_idx = next(i for i, d in enumerate(days) if d['full'] == selected_day)
+        selected_idx = int(selected_idx)
 
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
@@ -98,8 +100,8 @@ def driver_dashboard():
         email=session['user'],
         driver=driver_info,
         active_tab=tab,
-        days=days,
-        selected_day=selected_day
+        week_dates=week_dates,
+        selected_idx=selected_idx
     )
     return render_template('driver_dashboard.html', email=session['user'], driver=driver_info, active_tab=tab)
 
