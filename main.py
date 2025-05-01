@@ -104,7 +104,44 @@ def driver_dashboard():
         selected_idx=selected_idx
     )
     return render_template('driver_dashboard.html', email=session['user'], driver=driver_info, active_tab=tab)
+def haversine(lon1, lat1, lon2, lat2):
+    R = 6371
+    dlon = radians(lon2 - lon1)
+    dlat = radians(lat2 - lat1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
 
+@app.route('/nearby_cities', methods=['POST'])
+def nearby_cities():
+    data = request.get_json()
+    user_lat = float(data['lat'])
+    user_lon = float(data['lon'])
+    # List at least 5 cities, feel free to add more for full coverage!
+    cities = [
+        {'name': 'McAllen', 'lat': 26.2034, 'lon': -98.2300},
+        {'name': 'Edinburg', 'lat': 26.3017, 'lon': -98.1633},
+        {'name': 'Pharr', 'lat': 26.1948, 'lon': -98.1836},
+        {'name': 'Mission', 'lat': 26.2159, 'lon': -98.3253},
+        {'name': 'San Juan', 'lat': 26.1892, 'lon': -98.1553},
+        {'name': 'Donna', 'lat': 26.1706, 'lon': -98.0528},
+        {'name': 'Weslaco', 'lat': 26.1595, 'lon': -97.9908}
+        # ... add as many as needed!
+    ]
+    # Calculate distance for each city
+    for city in cities:
+        city['distance'] = haversine(user_lon, user_lat, city['lon'], city['lat'])
+    # Sort ascending (nearest first)
+    cities.sort(key=lambda x: x['distance'])
+    # Current location is always at top (the closest city)
+    html = ""
+    shown = 0
+    for city in cities:
+        html += f"""<div class="city-slot"><b>{city['name']}</b> ({city['distance']:.1f} km away)</div>"""
+        shown += 1
+        if shown >= 5:  # Show at least 5 cities
+            break
+    return html
 @app.route('/business_dashboard')
 def business_dashboard():
     if 'user' not in session or session.get('user_type') != 'business':

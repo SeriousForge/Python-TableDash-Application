@@ -139,6 +139,24 @@
                 height: 220px;
             }
         }
+
+        .city-slot {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px #eee;
+            margin: 15px auto;
+            max-width: 350px;
+            padding: 14px 20px;
+            cursor: pointer;
+            font-size: 1.07em;
+            text-align: center;
+            transition: box-shadow 0.17s;
+        }
+
+        .city-slot:hover {
+            box-shadow: 0 4px 16px #bbb;
+            background: #f2f2f2;
+        }
     </style>
     <!-- Leaflet CSS for map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -212,6 +230,29 @@
                 </script>
                 {% elif active_tab == 'schedule' %}
                 <h2>Schedule</h2>
+                <script>
+                    function sendLocationToServer(lat, lon) {
+                        fetch("/nearby_cities", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ lat: lat, lon: lon })
+                        })
+                            .then(r => r.text())
+                            .then(html => {
+                                document.getElementById("city-list").innerHTML = html;
+                            });
+                    }
+
+                    window.addEventListener("DOMContentLoaded", function () {
+                        if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(function (pos) {
+                                sendLocationToServer(pos.coords.latitude, pos.coords.longitude);
+                            });
+                        } else {
+                            document.getElementById("city-list").innerHTML = "<div>Geolocation not enabled.</div>";
+                        }
+                    });
+                </script>
                 <!-- Weekday short names row -->
                 <div class="weekday-labels">
                     {% for day in week_dates %}
@@ -226,6 +267,9 @@
                         {{ day.date }}
                     </a>
                     {% endfor %}
+                </div>
+                <div id="city-list">
+                    Loading nearby cities...
                 </div>
                 <style>
                     .weekday-labels {
