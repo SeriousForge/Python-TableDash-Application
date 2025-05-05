@@ -188,7 +188,7 @@
                 <p>This is the Delivery tab (default).</p>
                 <!-- Map for current driver location -->
                 <div id="map"></div>
-                <button class="btn-deliver">Deliver Now</button>
+                <button class="btn-deliver" onclick="window.location.href='{{ url_for('order_offer') }}'">Deliver Now</button>
                 <!-- Leaflet JS for map -->
                 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
                 <script>

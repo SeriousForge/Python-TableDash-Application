@@ -148,6 +148,39 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
 
+@app.route('/order_offer')
+def order_offer():
+    # Logic for processing and returning the order offer
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return redirect(url_for('login'))
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Fetch one order from orderrequest table
+        cursor.execute("""
+            SELECT * FROM orderrequest
+            ORDER BY Timestamp LIMIT 1
+        """)
+        order = cursor.fetchone()
+
+        if order:
+            # Calculate the combined amount of fees and tip
+            total_offer_amount = order['Fees'] + order['Tip']
+        else:
+            # Handle case when there are no orders
+            return "<div style='text-align:center;margin-top:24px;'>No orders available at the moment.</div>"
+
+        cursor.close()
+        conn.close()
+
+        return render_template('order_offer.html', order=order, total_offer_amount=total_offer_amount)
+
+    except Exception as e:
+        print("Failed to fetch order:", e)
+        return "<div style='text-align:center;margin-top:24px;color:red;'>Error retrieving order.</div>"
+
 @app.route('/nearby_cities', methods=['POST'])
 def nearby_cities():
     data = request.get_json()

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Order Offer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f9f9f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .offer-container {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            width: 320px;
+            text-align: center;
+        }
+
+        .offer-container h2 {
+            margin-top: 0;
+            color: #E23724;
+        }
+
+        .offer-container p {
+            margin: 12px 0;
+            font-size: 1.1em;
+        }
+
+        .offer-container button {
+            background: #E23724;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1em;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100px;
+            margin: 8px;
+        }
+
+        .offer-container button:hover {
+            background: #c41e1d;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="offer-container">
+        <h2>Order Offer</h2>
+        <p><strong>Total Amount: ${{ total_offer_amount }}</strong></p>
+        <p><strong>Pickup:</strong> {{ order.R_name }}</p>
+        <p><strong>Dropoff:</strong> {{ order.C_Address }}, {{ order.C_City }}, {{ order.C_Zip }}</p>
+        <button onclick="acceptOrder()">Accept</button>
+        <button onclick="declineOrder()">Decline</button>
+    </div>
+
+    <script>
+        function acceptOrder() {
+            // Implement the logic to accept the order
+            alert("Order accepted!");
+            // Redirect to next step or process order further
+        }
+
+        function declineOrder() {
+            // Implement the logic to decline the order
+            alert("Order declined!");
+            // Redirect or handle further decline process
+        }
+    </script>
+</body>
+
+</html>
