@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>New Orders</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>New Orders for {{ restaurant_name }}</h1>
+
+    {% if orders %}
+        {% set current_order = None %}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Customer Name</th>
+                    <th>Item</th>
+                    <th>Ingredients</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Timestamp</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                    {% if current_order != order.Order_ID %}
+                        {% if not loop.first %}
+                            <tr><td colspan="7"><hr></td></tr>
+                        {% endif %}
+                        {% set current_order = order.Order_ID %}
+                    {% endif %}
+                    <tr>
+                        <td>{{ order.Customer_name }}</td>
+                        <td>{{ order.Item }}</td>
+                        <td>{{ order.Ingredients }}</td>
+                        <td>{{ order.Quantity }}</td>
+                        <td>${{ order.Price }}</td>
+                        <td>{{ order.Timestamp }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('accept_order', order_id=order.Order_ID) }}">
+                                <button type="submit">Accept</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('reject_order', order_id=order.Order_ID) }}">
+                                <button type="submit">Reject</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No new orders at the moment.</p>
+    {% endif %}
+
+    <a href="{{ url_for('business_dashboard') }}">Go Back</a>
+</body>
+</html>

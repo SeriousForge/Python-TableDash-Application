@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Accepted Orders - {{ restaurant_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<nav>
+        <a href="{{ url_for('business_dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('past_orders') }}">Past Orders</a>
+        <a href="{{ url_for('view_accepted_orders') }}">Accepted Orders</a>
+        <a href="{{ url_for('edit_account') }}">Edit Account</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+</nav>
+
+<h1>Accepted Orders for {{ restaurant_name }}</h2>
+
+{% if orders %}
+    {% for order in orders %}
+        <div class="order-container">
+            <p><strong>Customer:</strong> {{ order.C_Name }}</p>
+            <p><strong>Time:</strong> {{ order.Timestamp }}</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Quantity</th>
+                        <th>Price ($)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ order.Item }}</td>
+                        <td>{{ order.Quantity }}</td>
+                        <td>{{ order.Price }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Action Buttons -->
+            <form method="POST" action="{{ url_for('mark_as_complete', order_id=order.Order_ID) }}">
+                <button type="submit" class="complete-btn">Mark as Complete</button>
+            </form>
+            <form method="POST" action="{{ url_for('reject_order', order_id=order.Order_ID) }}">
+                <input type="hidden" name="source" value="accepted_orders">
+                <button type="submit" class="reject-btn">Reject</button>
+            </form>
+        </div>
+    {% endfor %}
+{% else %}
+    <p style="text-align: center;">No accepted orders at the moment.</p>
+{% endif %}
+
+
+</body>
+</html>
