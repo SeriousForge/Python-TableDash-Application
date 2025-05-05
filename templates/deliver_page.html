@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Deliver Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #map {
+            width: 80%;
+            height: 60%;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            margin: 20px 0;
+        }
+
+        .settings-menu {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .settings-icon {
+            font-size: 2rem;
+            cursor: pointer;
+            margin-bottom: 10px;
+            background-color: #fff;
+            padding: 8px;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .settings-options {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            padding: 10px;
+        }
+
+        .settings-options.active {
+            display: flex;
+        }
+
+        .settings-options button {
+            padding: 10px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            background-color: #E23724;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 140px;
+        }
+
+        .settings-options button:hover {
+            background-color: #c41e1d;
+        }
+
+        #addressInputContainer {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        #addressInput {
+            padding: 8px;
+            width: 250px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #getDirectionsButton {
+            padding: 8px 16px;
+            margin-left: 8px;
+            border-radius: 4px;
+            border: none;
+            background-color: #E23724;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #getDirectionsButton:hover {
+            background-color: #c41e1d;
+        }
+
+        @media (max-width: 768px) {
+            #map {
+                width: calc(100% - 20px);
+                height: 60vh;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <h1>Deliver Page</h1>
+    <div class="settings-menu">
+        <i class="fas fa-cog settings-icon" onclick="toggleSettings()"></i>
+        <div class="settings-options">
+            <button onclick="pauseDelivery()">Pause Delivery</button>
+            <button onclick="endDelivery()">End Delivery</button>
+            <button onclick="window.location.href='{{ url_for('driver_dashboard', tab='delivery') }}'">Return to Home</button>
+        </div>
+    </div>
+    <div id="addressInputContainer">
+        <input type="text" id="addressInput" placeholder="Enter address">
+        <button id="getDirectionsButton" onclick="getDirections()">Get Directions</button>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        let map, currentMarker;
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        } else {
+            alert("Geolocation is not supported by this browser.");
+        }
+
+        function showPosition(position) {
+            map = L.map('map').setView([position.coords.latitude, position.coords.longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            currentMarker = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+                .bindPopup("Current Location").openPopup();
+        }
+
+        function showError(error) {
+            let msg;
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    msg = "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    msg = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    msg = "The request to get user location timed out.";
+                    break;
+                default:
+                    msg = "An unknown error occurred.";
+                    break;
+            }
+            alert(msg);
+        }
+
+        function toggleSettings() {
+            const settings = document.querySelector('.settings-options');
+            settings.classList.toggle('active');
+        }
+
+        function getDirections() {
+            const address = document.getElementById('addressInput').value;
+            if (!address) {
+                alert('Please enter an address.');
+                return;
+            }
+
+            // Example: Use an API like OpenStreetMap's Nominatim for geocoding
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const destination = data[0];
+                        const latLng = [destination.lat, destination.lon];
+
+                        // Move map and place new marker at destination
+                        map.setView(latLng, 13);
+                        if (currentMarker) map.removeLayer(currentMarker);
+                        currentMarker = L.marker(latLng).addTo(map)
+                            .bindPopup(`Destination: ${destination.display_name}`).openPopup();
+                    } else {
+                        alert('Address not found.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching directions:', error);
+                    alert('Error getting directions.');
+                });
+        }
+
+        function pauseDelivery() {
+            alert('Delivery paused!');
+        }
+
+        function endDelivery() {
+            alert('Delivery ended!');
+            fetch('{{ url_for("end_delivery") }}', { method: 'POST' })
+            .then(() => {
+                window.location.href = '{{ url_for("driver_dashboard") }}';
+            });
+        }
+    </script>
+</body>
+
+</html>

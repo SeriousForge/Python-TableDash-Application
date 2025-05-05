@@ -117,6 +117,9 @@ def driver_dashboard():
     else:
         selected_idx = int(selected_idx)
 
+    # Check for ongoing delivery
+    ongoing_delivery = session.get('delivery_active', False)
+
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM driver WHERE User_ID = %s", (user_id,))
@@ -138,7 +141,8 @@ def driver_dashboard():
         address=address_info,
         active_tab=tab,
         week_dates=week_dates,
-        selected_idx=selected_idx
+        selected_idx=selected_idx,
+        ongoing_delivery=ongoing_delivery
     )
 def haversine(lon1, lat1, lon2, lat2):
     R = 6371
@@ -147,6 +151,23 @@ def haversine(lon1, lat1, lon2, lat2):
     a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
     c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
+
+@app.route('/start_delivery')
+def start_delivery():
+    session['delivery_active'] = True
+    return redirect(url_for('deliver_page'))
+
+@app.route('/end_delivery', methods=['POST'])
+def end_delivery():
+    session.pop('delivery_active', None)
+    return jsonify({'success': True})
+
+@app.route('/deliver_page')
+def deliver_page():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return redirect(url_for('login'))
+
+    return render_template('deliver_page.html')
 
 @app.route('/order_offer')
 def order_offer():

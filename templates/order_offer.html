@@ -33,6 +33,17 @@
             font-size: 1.1em;
         }
 
+        .tip-note {
+            font-size: 0.9em;
+            color: rgba(0, 0, 0, 0.6);
+            margin-left: 5px;
+        }
+
+        .timer {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
         .offer-container button {
             background: #E23724;
             color: #fff;
@@ -54,7 +65,10 @@
 <body>
     <div class="offer-container">
         <h2>Order Offer</h2>
-        <p><strong>Total Amount: ${{ total_offer_amount }}</strong></p>
+        <p><strong>Total Amount: ${{ total_offer_amount }}</strong>
+            <span class="tip-note">(includes tip)</span>
+        </p>
+        <p><strong>Timer:</strong> <span class="timer" id="timer-countdown">30</span> seconds</p>
         <p><strong>Pickup:</strong> {{ order.R_name }}</p>
         <p><strong>Dropoff:</strong> {{ order.C_Address }}, {{ order.C_City }}, {{ order.C_Zip }}</p>
         <button onclick="acceptOrder()">Accept</button>
@@ -62,17 +76,40 @@
     </div>
 
     <script>
+        let countdown = 30;
+        const countdownElement = document.getElementById('timer-countdown');
+
+        function updateTimer() {
+            countdownElement.textContent = countdown;
+            if (countdown > 0) {
+                countdown--;
+            } else {
+                offerExpired();
+            }
+        }
+
+        function offerExpired() {
+            alert('Offer expired! Trying to get another offer...');
+            setTimeout(() => {
+                window.location.reload(); // Reload to fetch a new offer if available
+            }, 5000); // Wait 5 seconds before attempting to get a new offer
+        }
+
         function acceptOrder() {
             // Implement the logic to accept the order
-            alert("Order accepted!");
+            alert('Order accepted!');
             // Redirect to next step or process order further
+            clearInterval(timerInterval);
         }
 
         function declineOrder() {
             // Implement the logic to decline the order
-            alert("Order declined!");
-            // Redirect or handle further decline process
+            alert('Order declined!');
+            offerExpired();
+            clearInterval(timerInterval);
         }
+
+        const timerInterval = setInterval(updateTimer, 1000); // Update timer every second
     </script>
 </body>
 

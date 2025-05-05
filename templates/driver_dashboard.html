@@ -186,9 +186,16 @@
                 {% if active_tab == 'delivery' %}
                 <h2>Delivery</h2>
                 <p>This is the Delivery tab (default).</p>
+                
                 <!-- Map for current driver location -->
                 <div id="map"></div>
-                <button class="btn-deliver" onclick="window.location.href='{{ url_for('order_offer') }}'">Deliver Now</button>
+                
+                {% if ongoing_delivery %}
+                    <button class="btn-deliver" onclick="window.location.href='{{ url_for('deliver_page') }}'">Return to Delivery</button>
+                {% else %}
+                    <button class="btn-deliver" onclick="window.location.href='{{ url_for('start_delivery') }}'">Deliver Now</button>
+                {% endif %}
+                
                 <!-- Leaflet JS for map -->
                 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
                 <script>
