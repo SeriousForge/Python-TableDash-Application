@@ -92,10 +92,11 @@ def driver_dashboard():
     user_id = session.get('user_id')
 
     # Schedule cleanup job specifically for logged-in driver
-    schedule_cleanup_for_driver(user_id)
+    # schedule_cleanup_for_driver(user_id)  # As discussed previously
 
     tab = request.args.get('tab', 'delivery')
 
+    # Calculate calendar for this week (Sunday ... Saturday)
     today = datetime.today()
     weekday_idx = (today.weekday() + 1) % 7  # Sunday=0, ..., Saturday=6
     week_start = today - timedelta(days=weekday_idx)
@@ -120,6 +121,13 @@ def driver_dashboard():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM driver WHERE User_ID = %s", (user_id,))
     driver_info = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT * FROM address
+        WHERE User_ID = %s AND Address_Type = 'home'
+    """, (user_id,))
+    address_info = cursor.fetchone()
+
     cursor.close()
     conn.close()
 
@@ -127,11 +135,11 @@ def driver_dashboard():
         'driver_dashboard.html',
         email=session['user'],
         driver=driver_info,
+        address=address_info,
         active_tab=tab,
         week_dates=week_dates,
         selected_idx=selected_idx
     )
-
 def haversine(lon1, lat1, lon2, lat2):
     R = 6371
     dlon = radians(lon2 - lon1)
@@ -253,6 +261,52 @@ def save_availability():
     except Exception as e:
         print(e)
         return jsonify({'success': False, 'message': 'Failed to Save'}), 500
+    
+@app.route('/update_account', methods=['POST'])
+def update_account():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in.'}), 401
+
+    user_id = session['user_id']
+    
+    # Gather form data
+    street_address = request.form['street_address']
+    suite_number = request.form['suite_number']
+    gate_number = request.form['gate_number']
+    city = request.form['city']
+    state = request.form['state']
+    zip_code = request.form['zip_code']
+    
+    vehicle = request.form['vehicle']
+    make = request.form['make']
+    model = request.form['model']
+    vehicle_color = request.form['vehicle_color']
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+
+        # Update driver details
+        cursor.execute("""
+            UPDATE driver SET Vehicle = %s, Make = %s, Model = %s, Vehicle_Color = %s
+            WHERE User_ID = %s
+        """, (vehicle, make, model, vehicle_color, user_id))
+        
+        # Update address details
+        cursor.execute("""
+            UPDATE address SET Street_Address = %s, Suite_Number = %s, Gate_Number = %s,
+            City = %s, State = %s, ZIP_Code = %s
+            WHERE User_ID = %s AND Address_Type = 'home'
+        """, (street_address, suite_number, gate_number, city, state, zip_code, user_id))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Account updated successfully.'})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'message': 'Failed to update account.'}), 500
+    
 @app.route('/business_dashboard')
 def business_dashboard():
     if 'user' not in session or session.get('user_type') != 'business':

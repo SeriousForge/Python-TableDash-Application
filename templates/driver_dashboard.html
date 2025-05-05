@@ -305,10 +305,6 @@
                         position: relative;
                     }
 
-                    #scheduled-panel {
-                        /* (panel-specific overrides added above inline, see JS for toggle!) */
-                    }
-
                     #scheduled-btn.red {
                         background: #E23724;
                         color: #fff;
@@ -526,14 +522,143 @@
                 </style>
                 {% elif active_tab == 'account' %}
                 <h2>Account</h2>
-                <ul>
-                    <li>Name: {{ driver.Driver_Name }}</li>
-                    <li>Address: {{ driver.Driver_Address }}</li>
-                    <li>Vehicle: {{ driver.Vehicle }}, {{ driver.Make }}, {{ driver.Model }}, {{ driver.Vehicle_Color }}
-                    </li>
-                    <li>License #: {{ driver.License_Num }}</li>
-                    <li>Range: {{ driver.Driver_Range }}</li>
-                </ul>
+                
+                <!-- Display Account Details -->
+                <div id="account-display">
+                    <ul>
+                        <li><b>Name:</b> {{ driver.Driver_Name }}</li>
+                        <li><b>Street Address:</b> {{ address.Street_Address }}</li>
+                        <li><b>Suite Number:</b> {{ address.Suite_Number or 'N/A' }}</li>
+                        <li><b>Gate Number:</b> {{ address.Gate_Number or 'N/A' }}</li>
+                        <li><b>City:</b> {{ address.City }}</li>
+                        <li><b>State:</b> {{ address.State }}</li>
+                        <li><b>ZIP Code:</b> {{ address.ZIP_Code }}</li>
+                
+                        <li><b>Vehicle:</b> {{ driver.Vehicle }}</li>
+                        <li><b>Make:</b> {{ driver.Make }}</li>
+                        <li><b>Model:</b> {{ driver.Model }}</li>
+                        <li><b>Vehicle Color:</b> {{ driver.Vehicle_Color }}</li>
+                    </ul>
+                    <button id="edit-btn" class="btn">Update Account</button>
+                </div>
+                
+                <!-- Edit Form -->
+                <div id="account-edit" style="display:none;">
+                    <form id="updateAccountForm">
+                        <ul>
+                            <li><b>Name:</b> <input type="text" name="name" value="{{ driver.Driver_Name }}" required></li>
+                            <li><b>Street Address:</b> <input type="text" name="street_address" value="{{ address.Street_Address }}" required></li>
+                            <li><b>Suite Number:</b> <input type="text" name="suite_number" value="{{ address.Suite_Number }}"></li>
+                            <li><b>Gate Number:</b> <input type="text" name="gate_number" value="{{ address.Gate_Number }}"></li>
+                            <li><b>City:</b> <input type="text" name="city" value="{{ address.City }}" required></li>
+                            <li><b>State:</b> <input type="text" name="state" value="{{ address.State }}" required></li>
+                            <li><b>ZIP Code:</b> <input type="text" name="zip_code" value="{{ address.ZIP_Code }}" required></li>
+                
+                            <li><b>Vehicle:</b> <input type="text" name="vehicle" value="{{ driver.Vehicle }}" required></li>
+                            <li><b>Make:</b> <input type="text" name="make" value="{{ driver.Make }}" required></li>
+                            <li><b>Model:</b> <input type="text" name="model" value="{{ driver.Model }}" required></li>
+                            <li><b>Vehicle Color:</b> <input type="text" name="vehicle_color" value="{{ driver.Vehicle_Color }}" required></li>
+                        </ul>
+                        <button type="submit" class="btn">Update</button>
+                        <button type="button" id="cancel-btn" class="btn">Cancel</button>
+                    </form>
+                </div>
+                
+                <style>
+                    /* Add styles for buttons and form inputs */
+                    .btn {
+                        background: #E23724;
+                        color: #fff;
+                        border: none;
+                        padding: 10px 20px;
+                        font-size: 1rem;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                        margin-top: 10px;
+                        display: inline-block;
+                    }
+                    .btn:hover {
+                        background: #c41e1d;
+                    }
+                    form ul {
+                        padding-left: 0;
+                        list-style-type: none;
+                    }
+                    form ul li {
+                        margin-bottom: 10px;
+                    }
+                    form input[type="text"] {
+                        width: calc(100% - 120px);
+                        max-width: 600px;
+                        padding: 6px;
+                        margin-left: 12px;
+                    }
+                </style>
+                
+                <!-- JavaScript for toggling edit/view modes -->
+                <script>
+                document.getElementById('edit-btn').addEventListener('click', function() {
+                    document.getElementById('account-display').style.display = 'none';
+                    document.getElementById('account-edit').style.display = 'block';
+                });
+                
+                document.getElementById('cancel-btn').addEventListener('click', function() {
+                    document.getElementById('account-edit').style.display = 'none';
+                    document.getElementById('account-display').style.display = 'block';
+                });
+                
+                document.getElementById('updateAccountForm').onsubmit = function(event) {
+                    event.preventDefault();
+                    const formData = new FormData(this);
+                    fetch('{{ url_for("update_account") }}', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(resp => resp.json())
+                    .then(res => {
+                        document.getElementById('account-edit').style.display = 'none';
+                        document.getElementById('account-display').style.display = 'block';
+                        showFlash(res.message, res.success ? '' : 'error');
+                    }).catch(() => {
+                        showFlash('Failed to update account', 'error');
+                    });
+                };
+                
+                // Flash message helper
+                function showFlash(msg, cls) {
+                    let flash = document.getElementById('flash-message');
+                    flash.textContent = msg;
+                    flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
+                    flash.style.display = 'block';
+                    setTimeout(() => { flash.style.display = 'none'; }, 1800);
+                }
+                </script>
+                
+                <!-- Flash message styling -->
+                <style>
+                .flash-message {
+                    position: fixed;
+                    top: 25px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    padding: 16px 26px;
+                    border-radius: 18px;
+                    background: #2dbe60;
+                    color: #fff;
+                    font-weight: 500;
+                    box-shadow: 0 4px 20px #2dbe6055;
+                    z-index: 2100;
+                    font-size: 1.1rem;
+                    opacity: 0.96;
+                    display: none;
+                    transition: opacity 0.25s;
+                }
+                .flash-message.error {
+                    background: #e74c3c;
+                    box-shadow: 0 4px 20px #e74c3c55;
+                }
+                </style>
                 {% elif active_tab == 'rating' %}
                 <h2>Rating</h2>
                 <ul>
