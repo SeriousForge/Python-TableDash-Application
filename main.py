@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import mysql.connector
-from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
 
 app = Flask(__name__)
@@ -16,6 +17,29 @@ DATABASE_CONFIG = {
 
 def database_connect():
     return mysql.connector.connect(**DATABASE_CONFIG)
+
+def clean_past_availabilities_for_driver(user_id):
+    today = date.today().isoformat()
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+        # Delete only entries for the current driver in session
+        cursor.execute("""
+            DELETE FROM availability
+            WHERE Date < %s AND User_ID = %s
+        """, (today, user_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"Past availabilities cleaned up for driver {user_id}.")
+    except Exception as e:
+        print("Failed to clean past availabilities:", e)
+
+
+def schedule_cleanup_for_driver(user_id):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=lambda: clean_past_availabilities_for_driver(user_id), trigger='cron', day_of_week='sun', hour=0)
+    scheduler.start()
 
 @app.route('/')
 def splash():
@@ -67,9 +91,11 @@ def driver_dashboard():
         return redirect(url_for('login'))
     user_id = session.get('user_id')
 
+    # Schedule cleanup job specifically for logged-in driver
+    schedule_cleanup_for_driver(user_id)
+
     tab = request.args.get('tab', 'delivery')
 
-    # Calculate calendar for this week (Sunday ... Saturday)
     today = datetime.today()
     weekday_idx = (today.weekday() + 1) % 7  # Sunday=0, ..., Saturday=6
     week_start = today - timedelta(days=weekday_idx)
@@ -84,7 +110,6 @@ def driver_dashboard():
             'month': d.strftime('%b')       # 'May', etc.
         })
 
-    # Determine the selected day (index 0-6)
     selected_idx = request.args.get('selected_idx')
     if selected_idx is None:
         selected_idx = weekday_idx
@@ -106,7 +131,7 @@ def driver_dashboard():
         week_dates=week_dates,
         selected_idx=selected_idx
     )
-    return render_template('driver_dashboard.html', email=session['user'], driver=driver_info, active_tab=tab)
+
 def haversine(lon1, lat1, lon2, lat2):
     R = 6371
     dlon = radians(lon2 - lon1)
@@ -209,6 +234,10 @@ def save_availability():
 
     # Optional: save city in Notes column
     notes = city
+
+    # Block past dates
+    if dateiso < date.today().isoformat():
+        return jsonify({'success': False, 'message': 'Cannot schedule in the past.'}), 400
 
     try:
         conn = database_connect()
