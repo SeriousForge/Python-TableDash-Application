@@ -598,42 +598,58 @@
                 
                 <!-- JavaScript for toggling edit/view modes -->
                 <script>
-                document.getElementById('edit-btn').addEventListener('click', function() {
-                    document.getElementById('account-display').style.display = 'none';
-                    document.getElementById('account-edit').style.display = 'block';
-                });
-                
-                document.getElementById('cancel-btn').addEventListener('click', function() {
-                    document.getElementById('account-edit').style.display = 'none';
-                    document.getElementById('account-display').style.display = 'block';
-                });
-                
-                document.getElementById('updateAccountForm').onsubmit = function(event) {
-                    event.preventDefault();
-                    const formData = new FormData(this);
-                    fetch('{{ url_for("update_account") }}', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(resp => resp.json())
-                    .then(res => {
+                    document.getElementById('edit-btn').addEventListener('click', function() {
+                        document.getElementById('account-display').style.display = 'none';
+                        document.getElementById('account-edit').style.display = 'block';
+                    });
+                    
+                    document.getElementById('cancel-btn').addEventListener('click', function() {
                         document.getElementById('account-edit').style.display = 'none';
                         document.getElementById('account-display').style.display = 'block';
-                        showFlash(res.message, res.success ? '' : 'error');
-                    }).catch(() => {
-                        showFlash('Failed to update account', 'error');
                     });
-                };
-                
-                // Flash message helper
-                function showFlash(msg, cls) {
-                    let flash = document.getElementById('flash-message');
-                    flash.textContent = msg;
-                    flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
-                    flash.style.display = 'block';
-                    setTimeout(() => { flash.style.display = 'none'; }, 1800);
-                }
-                </script>
+                    
+                    document.getElementById('updateAccountForm').onsubmit = function(event) {
+                        event.preventDefault();
+                        const formData = new FormData(this);
+                        fetch('{{ url_for("update_account") }}', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(resp => resp.json())
+                        .then(res => {
+                            if (res.success) {
+                                // Reload account tab to fetch updated data
+                                fetch('{{ url_for("driver_dashboard", tab="account") }}')
+                                .then(response => response.text())
+                                .then(html => {
+                                    // Replace the account section content with updated data
+                                    const parser = new DOMParser();
+                                    const doc = parser.parseFromString(html, 'text/html');
+                                    const newAccountContent = doc.getElementById('account-display');
+                                    document.getElementById('account-display').innerHTML = newAccountContent.innerHTML;
+                                    
+                                    document.getElementById('account-edit').style.display = 'none';
+                                    document.getElementById('account-display').style.display = 'block';
+                                    
+                                    showFlash(res.message, '');
+                                });
+                            } else {
+                                showFlash(res.message, 'error');
+                            }
+                        }).catch(() => {
+                            showFlash('Failed to update account', 'error');
+                        });
+                    };
+                    
+                    // Flash message helper
+                    function showFlash(msg, cls) {
+                        let flash = document.getElementById('flash-message');
+                        flash.textContent = msg;
+                        flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
+                        flash.style.display = 'block';
+                        setTimeout(() => { flash.style.display = 'none'; }, 1800);
+                    }
+                    </script>
                 
                 <!-- Flash message styling -->
                 <style>
