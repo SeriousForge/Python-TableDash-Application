@@ -5,6 +5,7 @@
     <title>Deliver Page</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        /* Styles for the delivery page */
         body {
             font-family: Arial, sans-serif;
             display: flex;
@@ -24,88 +25,41 @@
             margin: 20px 0;
         }
 
-        .settings-menu {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .settings-icon {
-            font-size: 2rem;
-            cursor: pointer;
-            margin-bottom: 10px;
-            background-color: #fff;
-            padding: 8px;
-            border-radius: 50%;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        .settings-options {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            background-color: #fff;
+        /* Styles for the offer display */
+        #offer-section {
+            width: 80%;
+            padding: 20px;
+            background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-            padding: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin: 10px 0;
+            text-align: center;
+            display: none; /* Initially hide until an offer is present */
         }
 
-        .settings-options.active {
-            display: flex;
+        .offer-container h2 {
+            color: #E23724;
         }
 
-        .settings-options button {
-            padding: 10px;
-            margin: 5px 0;
-            border: none;
-            border-radius: 6px;
-            color: white;
-            background-color: #E23724;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            width: 140px;
+        .offer-container p {
+            margin: 12px 0;
+            font-size: 1.1em;
         }
 
-        .settings-options button:hover {
-            background-color: #c41e1d;
-        }
-
-        #addressInputContainer {
-            margin: 20px 0;
-            display: flex;
-            align-items: center;
-        }
-
-        #addressInput {
-            padding: 8px;
-            width: 250px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-        }
-
-        #getDirectionsButton {
-            padding: 8px 16px;
-            margin-left: 8px;
-            border-radius: 4px;
-            border: none;
-            background-color: #E23724;
+        .offer-container button {
+            background: #E23724;
             color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1em;
+            border-radius: 6px;
             cursor: pointer;
-            transition: background-color 0.3s;
+            width: 100px;
+            margin: 8px;
         }
 
-        #getDirectionsButton:hover {
-            background-color: #c41e1d;
-        }
-
-        @media (max-width: 768px) {
-            #map {
-                width: calc(100% - 20px);
-                height: 60vh;
-            }
+        .offer-container button:hover {
+            background: #c41e1d;
         }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -115,23 +69,23 @@
 
 <body>
     <h1>Deliver Page</h1>
-    <div class="settings-menu">
-        <i class="fas fa-cog settings-icon" onclick="toggleSettings()"></i>
-        <div class="settings-options">
-            <button onclick="pauseDelivery()">Pause Delivery</button>
-            <button onclick="endDelivery()">End Delivery</button>
-            <button onclick="window.location.href='{{ url_for('driver_dashboard', tab='delivery') }}'">Return to Home</button>
-        </div>
-    </div>
-    <div id="addressInputContainer">
-        <input type="text" id="addressInput" placeholder="Enter address">
-        <button id="getDirectionsButton" onclick="getDirections()">Get Directions</button>
-    </div>
     <div id="map"></div>
+
+    <!-- Offer Section -->
+    <div id="offer-section" class="offer-container">
+        <h2>Current Offer</h2>
+        <p><strong>Total Amount: $<span id="offer-amount"></span></strong>
+            <span class="tip-note">(includes tip)</span>
+        </p>
+        <p><strong>Pickup:</strong> <span id="pickup-location"></span></p>
+        <p><strong>Dropoff:</strong> <span id="dropoff-location"></span></p>
+        <button onclick="acceptOrder()">Accept</button>
+        <button onclick="declineOrder()">Decline</button>
+    </div>
 
     <script>
         let map, currentMarker;
-
+        
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(showPosition, showError);
         } else {
@@ -146,6 +100,9 @@
             }).addTo(map);
             currentMarker = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
                 .bindPopup("Current Location").openPopup();
+
+            // Fetch initial order offer after map is loaded
+            fetchOrderOffer();
         }
 
         function showError(error) {
@@ -167,51 +124,38 @@
             alert(msg);
         }
 
-        function toggleSettings() {
-            const settings = document.querySelector('.settings-options');
-            settings.classList.toggle('active');
-        }
-
-        function getDirections() {
-            const address = document.getElementById('addressInput').value;
-            if (!address) {
-                alert('Please enter an address.');
-                return;
-            }
-
-            // Example: Use an API like OpenStreetMap's Nominatim for geocoding
-            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+        function fetchOrderOffer() {
+            fetch('{{ url_for("order_offer") }}')
                 .then(response => response.json())
                 .then(data => {
-                    if (data && data.length > 0) {
-                        const destination = data[0];
-                        const latLng = [destination.lat, destination.lon];
-
-                        // Move map and place new marker at destination
-                        map.setView(latLng, 13);
-                        if (currentMarker) map.removeLayer(currentMarker);
-                        currentMarker = L.marker(latLng).addTo(map)
-                            .bindPopup(`Destination: ${destination.display_name}`).openPopup();
+                    console.log('Order Offer Data:', data); // Debug info
+                    if (data.success) {
+                        // Fill in offer info
+                        document.getElementById('offer-amount').textContent = data.total_offer_amount;
+                        document.getElementById('pickup-location').textContent = data.order.R_name;
+                        document.getElementById('dropoff-location').textContent = 
+                            `${data.order.C_Address}, ${data.order.C_City}, ${data.order.C_Zip}`;
+                        
+                        document.getElementById('offer-section').style.display = 'block';
                     } else {
-                        alert('Address not found.');
+                        console.log('No order available:', data.message);
+                        document.getElementById('offer-section').style.display = 'none';
                     }
                 })
                 .catch(error => {
-                    console.error('Error fetching directions:', error);
-                    alert('Error getting directions.');
+                    console.error('Error fetching order offer:', error);
                 });
         }
 
-        function pauseDelivery() {
-            alert('Delivery paused!');
+        function acceptOrder() {
+            alert('Order accepted!');
+            document.getElementById('offer-section').style.display = 'none';
         }
 
-        function endDelivery() {
-            alert('Delivery ended!');
-            fetch('{{ url_for("end_delivery") }}', { method: 'POST' })
-            .then(() => {
-                window.location.href = '{{ url_for("driver_dashboard") }}';
-            });
+        function declineOrder() {
+            alert('Order declined!');
+            document.getElementById('offer-section').style.display = 'none';
+            setTimeout(fetchOrderOffer, 10000); // Try to fetch a new offer after 10 seconds
         }
     </script>
 </body>

@@ -171,37 +171,41 @@ def deliver_page():
 
 @app.route('/order_offer')
 def order_offer():
-    # Logic for processing and returning the order offer
     if 'user_id' not in session or session.get('user_type') != 'driver':
-        return redirect(url_for('login'))
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
 
     try:
         conn = database_connect()
         cursor = conn.cursor(dictionary=True)
-        
-        # Fetch one order from orderrequest table
+
+        # Fetch the latest order that's Waiting For Assignment
         cursor.execute("""
-            SELECT * FROM orderrequest
-            ORDER BY Timestamp LIMIT 1
+            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip, 
+                   C_Name, C_Address, C_City, C_Zip, Fees, Tip
+            FROM orderrequest
+            WHERE Order_R_Status = 'new' AND Order_D_Status = 'Waiting For Assignment'
+            ORDER BY Timestamp ASC LIMIT 1
         """)
         order = cursor.fetchone()
 
         if order:
-            # Calculate the combined amount of fees and tip
-            total_offer_amount = order['Fees'] + order['Tip']
+            total_offer_amount = float(order['Fees'] + order['Tip'])
+            response = {
+                'success': True,
+                'order': order,
+                'total_offer_amount': total_offer_amount
+            }
         else:
-            # Handle case when there are no orders
-            return "<div style='text-align:center;margin-top:24px;'>No orders available at the moment.</div>"
+            response = {'success': False, 'message': 'No orders available'}
 
         cursor.close()
         conn.close()
 
-        return render_template('order_offer.html', order=order, total_offer_amount=total_offer_amount)
+        return jsonify(response)
 
     except Exception as e:
         print("Failed to fetch order:", e)
-        return "<div style='text-align:center;margin-top:24px;color:red;'>Error retrieving order.</div>"
-
+        return jsonify({'success': False, 'message': f'Error retrieving order: {e}'}), 500
 @app.route('/nearby_cities', methods=['POST'])
 def nearby_cities():
     data = request.get_json()
