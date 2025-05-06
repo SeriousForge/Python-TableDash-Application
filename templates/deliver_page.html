@@ -260,9 +260,63 @@
         }
     
         function arrivedAtStore() {
-            alert('Arrived at the store!');
-            // Implement further actions upon arrival
+    const orderId = window.currentOrder.Order_ID;  // Ensure this is the correct Order ID
+
+    fetch('{{ url_for("fetch_order_details") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const details = data.order_details;
+            let detailsHtml = `
+                <h2>Order Details</h2>
+                <p><strong>Restaurant:</strong> ${details[0].RestaurantName}</p>
+                <p><strong>Order for: </strong>${details[0].Customer_name}</p>
+                <h3>Items:</h3>
+                <ul>
+            `;
+
+            // Loop through the items in the order
+            details.forEach(item => {
+                detailsHtml += `<li>${item.Item}, Quantity: ${item.Quantity}</li>`;
+            });
+
+            detailsHtml += `</ul><button class="button" onclick="pickupOrder(${orderId})">Pickup Order</button>`;
+
+            // Completely replace existing content in the 'pickup-info' element
+            document.getElementById('pickup-info').innerHTML = detailsHtml;
+        } else {
+            console.error('Error fetching order details:', data.message);
         }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
+
+function pickupOrder(orderId) {
+    fetch('{{ url_for("update_order_status") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Order status updated to "Picked Up"');
+            // Optionally replace the current content with confirmation
+            document.getElementById('pickup-info').innerHTML = "<p>Order has been picked up.</p>";
+        } else {
+            console.error('Failed to update order status:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
     
         function declineOrder() {
             alert('Order declined!');

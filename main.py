@@ -218,6 +218,71 @@ def order_offer():
     except Exception as e:
         print("Failed to fetch order:", e)
         return jsonify({'success': False, 'message': f'Error retrieving order: {e}'}), 500
+    
+@app.route('/fetch_order_details', methods=['POST'])
+def fetch_order_details():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+
+        # Correct the table name with backticks
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+
+        # Correct SQL syntax by escaping tables
+        cursor.execute("""
+            SELECT o.Customer_name, o.Item, o.Quantity, r.R_name AS RestaurantName
+            FROM `order` AS o  -- Use backticks to escape 'order'
+            JOIN orderrequest AS r ON o.Order_ID = r.Order_ID
+            WHERE o.Order_ID = %s
+        """, (order_id,))
+        
+        order_details = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if order_details:
+            return jsonify({'success': True, 'order_details': order_details})
+        else:
+            return jsonify({'success': False, 'message': 'No order details found'}), 404
+
+    except Exception as e:
+        print("Failed to fetch order details:", e)
+        return jsonify({'success': False, 'message': f'Error retrieving order details: {e}'}), 500
+    
+@app.route('/update_order_status', methods=['POST'])
+def update_order_status():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+
+        conn = database_connect()
+        cursor  = conn.cursor()
+
+        # Update the order's delivery status
+        cursor.execute("""
+            UPDATE orderrequest 
+            SET Order_D_Status = 'Picked Up'
+            WHERE Order_ID = %s
+        """, (order_id,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Order status updated successfully.'})
+    
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error updating order status: {e}'}), 500
+    
 @app.route('/order_decline', methods=['POST'])
 def order_decline():
     if 'user_id' not in session or session.get('user_type') != 'driver':
