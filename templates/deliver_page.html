@@ -14,12 +14,14 @@
             background-color: #f0f0f0;
             margin: 0;
             height: 100vh;
-            overflow-y: auto; /* Allow vertical scrolling */
+            overflow-y: auto;
+            /* Allow vertical scrolling */
         }
 
         #map {
             width: 80%;
-            height: 50vh; /* Reduce map height to allow space for offer section */
+            height: 50vh;
+            /* Reduce map height to allow space for offer section */
             border-radius: 12px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
             margin: 20px 0 10px 0;
@@ -111,7 +113,8 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             margin: 20px 0;
             text-align: center;
-            display: none; /* Initially hide until an offer is present */
+            display: none;
+            /* Initially hide until an offer is present */
         }
 
         .offer-container h2 {
@@ -151,7 +154,8 @@
         <div class="settings-options">
             <button onclick="pauseDelivery()">Pause Delivery</button>
             <button onclick="endDelivery()">End Delivery</button>
-            <button onclick="window.location.href='{{ url_for('driver_dashboard', tab='delivery') }}'">Return to Home</button>
+            <button onclick="window.location.href='{{ url_for('driver_dashboard', tab='delivery') }}'">Return to
+                Home</button>
         </div>
     </div>
 
@@ -219,18 +223,17 @@
             fetch('{{ url_for("order_offer") }}')
                 .then(response => response.json())
                 .then(data => {
-                    console.log('Order Offer Data:', data); // Debug info
-                    if (data.success && data.order) {
-                        // Fill in offer info
+                    console.log('Order Offer Data:', data); // Useful for debugging
+                    if (data.success) {
                         document.getElementById('offer-amount').textContent = data.total_offer_amount;
                         document.getElementById('pickup-location').textContent = data.order.R_name;
-                        document.getElementById('dropoff-location').textContent = 
+                        document.getElementById('dropoff-location').textContent =
                             `${data.order.C_Address}, ${data.order.C_City}, ${data.order.C_Zip}`;
-                        
+
                         document.getElementById('offer-section').style.display = 'block';
                     } else {
-                        console.log('No order available:', data.message);
                         document.getElementById('offer-section').style.display = 'none';
+                        console.log('No order available:', data.message);
                     }
                 })
                 .catch(error => {
@@ -245,9 +248,9 @@
         function endDelivery() {
             alert('Delivery ended!');
             fetch('{{ url_for("end_delivery") }}', { method: 'POST' })
-            .then(() => {
-                window.location.href = '{{ url_for("driver_dashboard") }}';
-            });
+                .then(() => {
+                    window.location.href = '{{ url_for("driver_dashboard") }}';
+                });
         }
 
         function acceptOrder() {
@@ -259,7 +262,9 @@
         function declineOrder() {
             alert('Order declined!');
             document.getElementById('offer-section').style.display = 'none';
-            setTimeout(fetchOrderOffer, 5000); // Fetch the next offer after 5 seconds if declined
+
+            fetch('{{ url_for("order_decline", order_id=orderId) }}', { method: 'POST' })
+                .then(() => setTimeout(fetchOrderOffer, 5000)); // Try to fetch a new offer after 5 seconds
         }
     </script>
 </body>

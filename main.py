@@ -174,21 +174,33 @@ def order_offer():
     if 'user_id' not in session or session.get('user_type') != 'driver':
         return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
 
+    declined_orders = session.get('declined_orders', [])
+
     try:
         conn = database_connect()
         cursor = conn.cursor(dictionary=True)
 
-        # Fetch the latest order that's Waiting For Assignment
+        # Fetch the latest order that's not rejected and not declined by this driver
         cursor.execute("""
             SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip, 
                    C_Name, C_Address, C_City, C_Zip, Fees, Tip
             FROM orderrequest
-            WHERE Order_R_Status = 'new' AND Order_D_Status = 'Waiting For Assignment'
+            WHERE Order_R_Status != 'rejected' 
+              AND Order_D_Status = 'Waiting For Assignment'
+              AND OrderR_ID NOT IN (%s)
             ORDER BY Timestamp ASC LIMIT 1
-        """)
+        """, (','.join(['%s'] * len(declined_orders)), *declined_orders))
         order = cursor.fetchone()
 
         if order:
+            # Implement a temporary lock (e.g., 1-minute lock) by updating the order
+            cursor.execute("""
+                UPDATE orderrequest 
+                SET Order_D_Status = 'Being Viewed'
+                WHERE OrderR_ID = %s
+            """, (order['OrderR_ID'],))
+            conn.commit()
+
             total_offer_amount = float(order['Fees'] + order['Tip'])
             response = {
                 'success': True,
@@ -206,6 +218,22 @@ def order_offer():
     except Exception as e:
         print("Failed to fetch order:", e)
         return jsonify({'success': False, 'message': f'Error retrieving order: {e}'}), 500
+@app.route('/order_decline', methods=['POST'])
+def order_decline():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    declined_order_id = request.form.get('order_id')
+    if declined_order_id:
+        declined_orders = session.get('declined_orders', [])
+        declined_orders.append(declined_order_id)
+        session['declined_orders'] = declined_orders
+        
+        # Optionally update the order's status back to available after a lock period ends
+        # cursor.execute("UPDATE orderrequest SET Order_D_Status = 'Waiting For Assignment' WHERE OrderR_ID = %s", (declined_order_id,))
+        # conn.commit()
+    
+    return jsonify({'success': True})
 @app.route('/nearby_cities', methods=['POST'])
 def nearby_cities():
     data = request.get_json()
