@@ -252,6 +252,45 @@ def fetch_order_details():
         print("Failed to fetch order details:", e)
         return jsonify({'success': False, 'message': f'Error retrieving order details: {e}'}), 500
     
+@app.route('/complete_delivery', methods=['POST'])
+def complete_delivery():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+        earnings = request.json.get('earnings')  # Receive earnings for order
+
+        conn = database_connect()
+        cursor = conn.cursor()
+
+        # Update the order's status to 'Delivered'
+        cursor.execute("""
+            UPDATE orderrequest 
+            SET Order_D_Status = 'Delivered'
+            WHERE Order_ID = %s
+        """, (order_id,))
+        
+        # Update driver's earnings
+        cursor.execute("""
+            UPDATE driver 
+            SET Earnings = Earnings + %s
+            WHERE User_ID = %s
+        """, (earnings, session['user_id']))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Delivery completed and earnings updated.'})
+
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error updating order status: {e}'}), 500
+    
 @app.route('/update_order_status', methods=['POST'])
 def update_order_status():
     if 'user_id' not in session or session.get('user_type') != 'driver':

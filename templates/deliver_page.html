@@ -260,7 +260,7 @@
         }
     
         function arrivedAtStore() {
-    const orderId = window.currentOrder.Order_ID;  // Ensure this is the correct Order ID
+    const orderId = window.currentOrder.Order_ID;
 
     fetch('{{ url_for("fetch_order_details") }}', {
         method: 'POST',
@@ -270,24 +270,24 @@
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            const details = data.order_details;
+            window.orderDetails = data.order_details; // Store order details globally
+
             let detailsHtml = `
                 <h2>Order Details</h2>
-                <p><strong>Restaurant:</strong> ${details[0].RestaurantName}</p>
-                <p><strong>Order for: </strong>${details[0].Customer_name}</p>
+                <p><strong>Restaurant:</strong> ${data.order_details[0].RestaurantName}</p>
+                <p><strong>Order for: </strong>${data.order_details[0].Customer_name}</p>
                 <h3>Items:</h3>
                 <ul>
             `;
 
-            // Loop through the items in the order
-            details.forEach(item => {
+            data.order_details.forEach(item => {
                 detailsHtml += `<li>${item.Item}, Quantity: ${item.Quantity}</li>`;
             });
 
             detailsHtml += `</ul><button class="button" onclick="pickupOrder(${orderId})">Pickup Order</button>`;
 
-            // Completely replace existing content in the 'pickup-info' element
             document.getElementById('pickup-info').innerHTML = detailsHtml;
+            document.getElementById('pickup-info').style.display = 'block';
         } else {
             console.error('Error fetching order details:', data.message);
         }
@@ -307,10 +307,53 @@ function pickupOrder(orderId) {
     .then(data => {
         if (data.success) {
             alert('Order status updated to "Picked Up"');
-            // Optionally replace the current content with confirmation
-            document.getElementById('pickup-info').innerHTML = "<p>Order has been picked up.</p>";
+            const order = window.currentOrder;
+            document.getElementById('pickup-info').innerHTML = `
+                <h2>Delivery Details</h2>
+                <p><strong>Name:</strong> ${order.C_Name}</p>
+                <p><strong>Address:</strong> ${order.C_Address}</p>
+                <h3>Order Details from ${order.R_name}:</h3>
+                <ul>
+            `;
+
+            const orderDetails = window.orderDetails;
+            if (orderDetails) {
+                orderDetails.forEach(item => {
+                    document.getElementById('pickup-info').innerHTML += `<li>${item.Item}, Quantity: ${item.Quantity}</li>`;
+                });
+            }
+
+            document.getElementById('pickup-info').innerHTML += `
+                </ul><button class="button" onclick="showFinishDelivery(${orderId})">Finish Delivery</button>
+            `;
+
+            document.getElementById('pickup-info').style.display = 'block';
         } else {
             console.error('Failed to update order status:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
+
+function completeDelivery(orderId) {
+    const totalEarnings = window.currentOrder.Fees + window.currentOrder.Tip;
+
+    fetch('{{ url_for("complete_delivery") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, earnings: totalEarnings })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Delivery completed. Earnings updated.');
+            document.getElementById('delivery-complete').innerHTML = "<p>Delivery completed. Thank you!</p>";
+            document.getElementById('delivery-complete').style.display = 'block';
+            // Optionally redirect back to dashboard or refresh the page.
+        } else {
+            console.error('Failed to complete delivery:', data.message);
         }
     })
     .catch(error => {
