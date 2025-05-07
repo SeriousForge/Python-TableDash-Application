@@ -417,20 +417,24 @@ def fulfill_order(order_id):
 def order_history():
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
+    
+    # Use User_ID to cross-reference orders instead of name for more reliable identification
+    user_id = session.get('user_id')
 
-    # Get current logged-in customer name
-    customer_name = session.get('user')
-
-    # Pull all orders for this customer from orderrequest table
-    cursor.execute("SELECT * FROM orderrequest WHERE C_Name = %s", (customer_name,))
+    # Ensure all relevant orders for the logged-in customer are fetched
+    cursor.execute("""
+        SELECT *
+        FROM orderrequest
+        WHERE C_Name = (SELECT CONCAT(Customer_Fname, ' ', Customer_LName) FROM customer WHERE User_ID = %s)
+    """, (user_id,))
     orders = cursor.fetchall()
 
     history = []
 
     for order in orders:
-        order_id = order['OrderR_ID']  # ✅ use the correct primary key name
+        order_id = order['Order_ID']  # Use Order_ID to match with items in the `order` table
 
-        # Query items linked to this order
+        # Query items linked to this order using the correct Order_ID
         cursor.execute("""
             SELECT Item, Price, Quantity
             FROM `order`
@@ -447,6 +451,7 @@ def order_history():
                 'Subtotal': float(i['Price']) * i['Quantity']
             })
 
+        # Collect and calculate the total for display
         history.append({
             'order_id': order_id,
             'Restaurant_Name': order['R_name'],
