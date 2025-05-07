@@ -186,16 +186,18 @@
                 {% if active_tab == 'delivery' %}
                 <h2>Delivery</h2>
                 <p>This is the Delivery tab (default).</p>
-                
+
                 <!-- Map for current driver location -->
                 <div id="map"></div>
-                
+
                 {% if ongoing_delivery %}
-                    <button class="btn-deliver" onclick="window.location.href='{{ url_for('deliver_page') }}'">Return to Delivery</button>
+                <button class="btn-deliver" onclick="window.location.href='{{ url_for('deliver_page') }}'">Return to
+                    Delivery</button>
                 {% else %}
-                    <button class="btn-deliver" onclick="window.location.href='{{ url_for('start_delivery') }}'">Deliver Now</button>
+                <button class="btn-deliver" onclick="window.location.href='{{ url_for('start_delivery') }}'">Deliver
+                    Now</button>
                 {% endif %}
-                
+
                 <!-- Leaflet JS for map -->
                 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
                 <script>
@@ -529,7 +531,7 @@
                 </style>
                 {% elif active_tab == 'account' %}
                 <h2>Account</h2>
-                
+
                 <!-- Display Account Details -->
                 <div id="account-display">
                     <ul>
@@ -540,7 +542,7 @@
                         <li><b>City:</b> {{ address.City }}</li>
                         <li><b>State:</b> {{ address.State }}</li>
                         <li><b>ZIP Code:</b> {{ address.ZIP_Code }}</li>
-                
+
                         <li><b>Vehicle:</b> {{ driver.Vehicle }}</li>
                         <li><b>Make:</b> {{ driver.Make }}</li>
                         <li><b>Model:</b> {{ driver.Model }}</li>
@@ -548,29 +550,36 @@
                     </ul>
                     <button id="edit-btn" class="btn">Update Account</button>
                 </div>
-                
+
                 <!-- Edit Form -->
                 <div id="account-edit" style="display:none;">
                     <form id="updateAccountForm">
                         <ul>
-                            <li><b>Name:</b> <input type="text" name="name" value="{{ driver.Driver_Name }}" required></li>
-                            <li><b>Street Address:</b> <input type="text" name="street_address" value="{{ address.Street_Address }}" required></li>
-                            <li><b>Suite Number:</b> <input type="text" name="suite_number" value="{{ address.Suite_Number }}"></li>
-                            <li><b>Gate Number:</b> <input type="text" name="gate_number" value="{{ address.Gate_Number }}"></li>
+                            <li><b>Name:</b> <input type="text" name="name" value="{{ driver.Driver_Name }}" required>
+                            </li>
+                            <li><b>Street Address:</b> <input type="text" name="street_address"
+                                    value="{{ address.Street_Address }}" required></li>
+                            <li><b>Suite Number:</b> <input type="text" name="suite_number"
+                                    value="{{ address.Suite_Number }}"></li>
+                            <li><b>Gate Number:</b> <input type="text" name="gate_number"
+                                    value="{{ address.Gate_Number }}"></li>
                             <li><b>City:</b> <input type="text" name="city" value="{{ address.City }}" required></li>
                             <li><b>State:</b> <input type="text" name="state" value="{{ address.State }}" required></li>
-                            <li><b>ZIP Code:</b> <input type="text" name="zip_code" value="{{ address.ZIP_Code }}" required></li>
-                
-                            <li><b>Vehicle:</b> <input type="text" name="vehicle" value="{{ driver.Vehicle }}" required></li>
+                            <li><b>ZIP Code:</b> <input type="text" name="zip_code" value="{{ address.ZIP_Code }}"
+                                    required></li>
+
+                            <li><b>Vehicle:</b> <input type="text" name="vehicle" value="{{ driver.Vehicle }}" required>
+                            </li>
                             <li><b>Make:</b> <input type="text" name="make" value="{{ driver.Make }}" required></li>
                             <li><b>Model:</b> <input type="text" name="model" value="{{ driver.Model }}" required></li>
-                            <li><b>Vehicle Color:</b> <input type="text" name="vehicle_color" value="{{ driver.Vehicle_Color }}" required></li>
+                            <li><b>Vehicle Color:</b> <input type="text" name="vehicle_color"
+                                    value="{{ driver.Vehicle_Color }}" required></li>
                         </ul>
                         <button type="submit" class="btn">Update</button>
                         <button type="button" id="cancel-btn" class="btn">Cancel</button>
                     </form>
                 </div>
-                
+
                 <style>
                     /* Add styles for buttons and form inputs */
                     .btn {
@@ -585,16 +594,20 @@
                         margin-top: 10px;
                         display: inline-block;
                     }
+
                     .btn:hover {
                         background: #c41e1d;
                     }
+
                     form ul {
                         padding-left: 0;
                         list-style-type: none;
                     }
+
                     form ul li {
                         margin-bottom: 10px;
                     }
+
                     form input[type="text"] {
                         width: calc(100% - 120px);
                         max-width: 600px;
@@ -602,52 +615,52 @@
                         margin-left: 12px;
                     }
                 </style>
-                
+
                 <!-- JavaScript for toggling edit/view modes -->
                 <script>
-                    document.getElementById('edit-btn').addEventListener('click', function() {
+                    document.getElementById('edit-btn').addEventListener('click', function () {
                         document.getElementById('account-display').style.display = 'none';
                         document.getElementById('account-edit').style.display = 'block';
                     });
-                    
-                    document.getElementById('cancel-btn').addEventListener('click', function() {
+
+                    document.getElementById('cancel-btn').addEventListener('click', function () {
                         document.getElementById('account-edit').style.display = 'none';
                         document.getElementById('account-display').style.display = 'block';
                     });
-                    
-                    document.getElementById('updateAccountForm').onsubmit = function(event) {
+
+                    document.getElementById('updateAccountForm').onsubmit = function (event) {
                         event.preventDefault();
                         const formData = new FormData(this);
                         fetch('{{ url_for("update_account") }}', {
                             method: 'POST',
                             body: formData
                         })
-                        .then(resp => resp.json())
-                        .then(res => {
-                            if (res.success) {
-                                // Reload account tab to fetch updated data
-                                fetch('{{ url_for("driver_dashboard", tab="account") }}')
-                                .then(response => response.text())
-                                .then(html => {
-                                    // Replace the account section content with updated data
-                                    const parser = new DOMParser();
-                                    const doc = parser.parseFromString(html, 'text/html');
-                                    const newAccountContent = doc.getElementById('account-display');
-                                    document.getElementById('account-display').innerHTML = newAccountContent.innerHTML;
-                                    
-                                    document.getElementById('account-edit').style.display = 'none';
-                                    document.getElementById('account-display').style.display = 'block';
-                                    
-                                    showFlash(res.message, '');
-                                });
-                            } else {
-                                showFlash(res.message, 'error');
-                            }
-                        }).catch(() => {
-                            showFlash('Failed to update account', 'error');
-                        });
+                            .then(resp => resp.json())
+                            .then(res => {
+                                if (res.success) {
+                                    // Reload account tab to fetch updated data
+                                    fetch('{{ url_for("driver_dashboard", tab="account") }}')
+                                        .then(response => response.text())
+                                        .then(html => {
+                                            // Replace the account section content with updated data
+                                            const parser = new DOMParser();
+                                            const doc = parser.parseFromString(html, 'text/html');
+                                            const newAccountContent = doc.getElementById('account-display');
+                                            document.getElementById('account-display').innerHTML = newAccountContent.innerHTML;
+
+                                            document.getElementById('account-edit').style.display = 'none';
+                                            document.getElementById('account-display').style.display = 'block';
+
+                                            showFlash(res.message, '');
+                                        });
+                                } else {
+                                    showFlash(res.message, 'error');
+                                }
+                            }).catch(() => {
+                                showFlash('Failed to update account', 'error');
+                            });
                     };
-                    
+
                     // Flash message helper
                     function showFlash(msg, cls) {
                         let flash = document.getElementById('flash-message');
@@ -656,50 +669,105 @@
                         flash.style.display = 'block';
                         setTimeout(() => { flash.style.display = 'none'; }, 1800);
                     }
-                    </script>
-                
+                </script>
+
                 <!-- Flash message styling -->
                 <style>
-                .flash-message {
-                    position: fixed;
-                    top: 25px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    padding: 16px 26px;
-                    border-radius: 18px;
-                    background: #2dbe60;
-                    color: #fff;
-                    font-weight: 500;
-                    box-shadow: 0 4px 20px #2dbe6055;
-                    z-index: 2100;
-                    font-size: 1.1rem;
-                    opacity: 0.96;
-                    display: none;
-                    transition: opacity 0.25s;
-                }
-                .flash-message.error {
-                    background: #e74c3c;
-                    box-shadow: 0 4px 20px #e74c3c55;
-                }
+                    .flash-message {
+                        position: fixed;
+                        top: 25px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        padding: 16px 26px;
+                        border-radius: 18px;
+                        background: #2dbe60;
+                        color: #fff;
+                        font-weight: 500;
+                        box-shadow: 0 4px 20px #2dbe6055;
+                        z-index: 2100;
+                        font-size: 1.1rem;
+                        opacity: 0.96;
+                        display: none;
+                        transition: opacity 0.25s;
+                    }
+
+                    .flash-message.error {
+                        background: #e74c3c;
+                        box-shadow: 0 4px 20px #e74c3c55;
+                    }
                 </style>
                 {% elif active_tab == 'rating' %}
                 <h2>Rating</h2>
-                <ul>
-                    <li>Driver Rating: {{ driver.Driver_Rating }}</li>
-                    <li>Overall Rating: {{ driver.Overall_Rating }}</li>
-                    <li>Timeliness: {{ driver.Timeliness }}</li>
-                    <li>Friendliness: {{ driver.Friendliness }}</li>
-                    <li>Accuracy: {{ driver.Accuracy }}</li>
-                </ul>
+                <div class="rating-container">
+                    <div class="rating-card">
+                        <span class="rating-label">Driver Rating:</span>
+                        <span class="rating-value">{{ driver.Driver_Rating }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Overall Rating:</span>
+                        <span class="rating-value">{{ driver.Overall_Rating }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Timeliness:</span>
+                        <span class="rating-value">{{ driver.Timeliness }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Friendliness:</span>
+                        <span class="rating-value">{{ driver.Friendliness }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Accuracy:</span>
+                        <span class="rating-value">{{ driver.Accuracy }}</span>
+                    </div>
+                </div>
+                <style>
+                    .rating-container {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        background: #fff;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        padding: 20px;
+                        margin: 20px 0;
+                        width: 100%;
+                        max-width: 600px;
+                    }
+
+                    .rating-card {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: #fafafa;
+                        border-radius: 6px;
+                        border: 1px solid #ddd;
+                        width: 100%;
+                        padding: 12px 16px;
+                        margin: 8px 0;
+                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                    }
+
+                    .rating-label {
+                        font-weight: bold;
+                        color: #333;
+                    }
+
+                    .rating-value {
+                        font-size: 1.2em;
+                        color: #E23724;
+                        font-weight: bold;
+                    }
+                </style>
                 {% elif active_tab == 'earnings' %}
-<h2>Earnings</h2>
-<p><strong>Total Earnings:</strong> ${{ total_earnings }}</p>
-<ul>
-    {% for record in earnings_records %}
-    <li>{{ record.Customer_Name }} - {{ record.Restaurant_Name }}: ${{ record.Driver_Fee + record.Driver_Tip }}</li>
-    {% endfor %}
-</ul>
-{% endif %}
+                <h2>Earnings</h2>
+                <p><strong>Total Earnings:</strong> ${{ total_earnings }}</p>
+                <ul>
+                    {% for record in earnings_records %}
+                    <li>{{ record.Customer_Name }} - {{ record.Restaurant_Name }}: ${{ record.Driver_Fee +
+                        record.Driver_Tip }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
             </div>
         </main>
     </div>
@@ -726,58 +794,58 @@
         });
 
         const scheduledBtn = document.getElementById('scheduled-btn');
-const scheduledPanel = document.getElementById('scheduled-panel');
-const scheduledList = document.getElementById('scheduled-list');
-const closeScheduled = document.getElementById('close-scheduled');
+        const scheduledPanel = document.getElementById('scheduled-panel');
+        const scheduledList = document.getElementById('scheduled-list');
+        const closeScheduled = document.getElementById('close-scheduled');
 
-// Helper: Get current selected day index & week's ISO
-function getSelectedDayIso() {
-    const active = document.querySelector('.weekday-circle.active');
-    const idx = Array.from(active.parentElement.children).indexOf(active);
-    return weekDates[idx].iso;
-}
+        // Helper: Get current selected day index & week's ISO
+        function getSelectedDayIso() {
+            const active = document.querySelector('.weekday-circle.active');
+            const idx = Array.from(active.parentElement.children).indexOf(active);
+            return weekDates[idx].iso;
+        }
 
-// Open/close logic
-scheduledBtn.onclick = function() {
-    if (scheduledPanel.style.display === 'block') {
-        scheduledPanel.style.display = 'none';
-        scheduledBtn.classList.remove('active');
-        return;
-    }
-    scheduledPanel.style.display = 'block';
-    scheduledBtn.classList.add('active');
-    scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
-    fetch('/user_scheduled_times', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateiso: getSelectedDayIso() })
-    })
-    .then(r => r.text())
-    .then(html => scheduledList.innerHTML = html);
-};
-
-closeScheduled.onclick = function() {
-    scheduledPanel.style.display = 'none';
-    scheduledBtn.classList.remove('active');
-};
-
-// If user clicks day, reload list if panel is open
-document.querySelectorAll('.weekday-circle').forEach((circle, i) => {
-    circle.addEventListener('click', function(e){
-        setTimeout(()=>{
+        // Open/close logic
+        scheduledBtn.onclick = function () {
             if (scheduledPanel.style.display === 'block') {
-                scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
-                fetch('/user_scheduled_times', {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ dateiso: weekDates[i].iso })
-                })
+                scheduledPanel.style.display = 'none';
+                scheduledBtn.classList.remove('active');
+                return;
+            }
+            scheduledPanel.style.display = 'block';
+            scheduledBtn.classList.add('active');
+            scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+            fetch('/user_scheduled_times', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dateiso: getSelectedDayIso() })
+            })
                 .then(r => r.text())
                 .then(html => scheduledList.innerHTML = html);
-            }
-        }, 120);
-    });
-});
+        };
+
+        closeScheduled.onclick = function () {
+            scheduledPanel.style.display = 'none';
+            scheduledBtn.classList.remove('active');
+        };
+
+        // If user clicks day, reload list if panel is open
+        document.querySelectorAll('.weekday-circle').forEach((circle, i) => {
+            circle.addEventListener('click', function (e) {
+                setTimeout(() => {
+                    if (scheduledPanel.style.display === 'block') {
+                        scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+                        fetch('/user_scheduled_times', {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dateiso: weekDates[i].iso })
+                        })
+                            .then(r => r.text())
+                            .then(html => scheduledList.innerHTML = html);
+                    }
+                }, 120);
+            });
+        });
         // Hide modal when clicking outside modal-content
         document.getElementById('slotModal').onclick = function (e) {
             if (e.target === this) this.style.display = 'none';
