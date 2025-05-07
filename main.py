@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import mysql.connector
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta, date
+from math import radians, sin, cos, sqrt, atan2
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -14,6 +17,29 @@ DATABASE_CONFIG = {
 
 def database_connect():
     return mysql.connector.connect(**DATABASE_CONFIG)
+
+def clean_past_availabilities_for_driver(user_id):
+    today = date.today().isoformat()
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+        # Delete only entries for the current driver in session
+        cursor.execute("""
+            DELETE FROM availability
+            WHERE Date < %s AND User_ID = %s
+        """, (today, user_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"Past availabilities cleaned up for driver {user_id}.")
+    except Exception as e:
+        print("Failed to clean past availabilities:", e)
+
+
+def schedule_cleanup_for_driver(user_id):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=lambda: clean_past_availabilities_for_driver(user_id), trigger='cron', day_of_week='sun', hour=0)
+    scheduler.start()
 
 @app.route('/')
 def splash():
@@ -65,15 +91,486 @@ def driver_dashboard():
         return redirect(url_for('login'))
     user_id = session.get('user_id')
 
+    # Schedule cleanup job specifically for logged-in driver
+    # schedule_cleanup_for_driver(user_id)  # As discussed previously
+
+    tab = request.args.get('tab', 'delivery')
+
+    # Calculate calendar for this week (Sunday ... Saturday)
+    today = datetime.today()
+    weekday_idx = (today.weekday() + 1) % 7  # Sunday=0, ..., Saturday=6
+    week_start = today - timedelta(days=weekday_idx)
+    week_dates = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        week_dates.append({
+            'short': d.strftime('%a'),      # Sun, Mon, Tue, etc.
+            'date': d.day,                  # Day of month (30, 1, ...)
+            'iso': d.strftime('%Y-%m-%d'),  # full ISO date for POST
+            'long': d.strftime('%A'),       # Full day-of-week for db
+            'month': d.strftime('%b')       # 'May', etc.
+        })
+
+    selected_idx = request.args.get('selected_idx')
+    if selected_idx is None:
+        selected_idx = weekday_idx
+    else:
+        selected_idx = int(selected_idx)
+
+    # Check for ongoing delivery
+    ongoing_delivery = session.get('delivery_active', False)
+
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM driver WHERE User_ID = %s", (user_id,))
     driver_info = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT Driver_Fee, Driver_Tip, Customer_Name, Restaurant_Name
+        FROM order_fulfilled
+        WHERE Driver_Name = %s
+    """, (driver_info['Driver_Name'],))
+    earnings_records = cursor.fetchall()
+    # Calculate total earnings
+    total_earnings = sum(record['Driver_Fee'] + record['Driver_Tip'] for record in earnings_records)
+    cursor.execute("""
+        SELECT * FROM address
+        WHERE User_ID = %s AND Address_Type = 'home'
+    """, (user_id,))
+    address_info = cursor.fetchone()
+
     cursor.close()
     conn.close()
 
-    return render_template('driver_dashboard.html', email=session['user'], driver=driver_info)
+    return render_template(
+        'driver_dashboard.html',
+        email=session['user'],
+        driver=driver_info,
+        address=address_info,
+        active_tab=tab,
+        week_dates=week_dates,
+        selected_idx=selected_idx,
+        ongoing_delivery=ongoing_delivery,
+        earnings_records=earnings_records,
+        total_earnings=total_earnings
+    )
+def haversine(lon1, lat1, lon2, lat2):
+    R = 6371
+    dlon = radians(lon2 - lon1)
+    dlat = radians(lat2 - lat1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
 
+@app.route('/start_delivery')
+def start_delivery():
+    session['delivery_active'] = True
+    return redirect(url_for('deliver_page'))
+
+@app.route('/end_delivery', methods=['POST'])
+def end_delivery():
+    session.pop('delivery_active', None)
+    return jsonify({'success': True})
+
+@app.route('/deliver_page')
+def deliver_page():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return redirect(url_for('login'))
+
+    return render_template('deliver_page.html')
+
+@app.route('/order_offer')
+def order_offer():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    declined_orders = session.get('declined_orders', [])
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch the latest order that's not rejected and not declined by this driver
+        cursor.execute("""
+            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip, 
+                   C_Name, C_Address, C_City, C_Zip, Fees, Tip
+            FROM orderrequest
+            WHERE Order_R_Status != 'rejected' 
+              AND Order_D_Status = 'Waiting For Assignment'
+              AND OrderR_ID NOT IN (%s)
+            ORDER BY Timestamp ASC LIMIT 1
+        """, (','.join(['%s'] * len(declined_orders)), *declined_orders))
+        order = cursor.fetchone()
+
+        if order:
+            # Implement a temporary lock (e.g., 1-minute lock) by updating the order
+            cursor.execute("""
+                UPDATE orderrequest 
+                SET Order_D_Status = 'Being Viewed'
+                WHERE OrderR_ID = %s
+            """, (order['OrderR_ID'],))
+            conn.commit()
+
+            total_offer_amount = float(order['Fees'] + order['Tip'])
+            response = {
+                'success': True,
+                'order': order,
+                'total_offer_amount': total_offer_amount
+            }
+        else:
+            response = {'success': False, 'message': 'No orders available'}
+
+        cursor.close()
+        conn.close()
+
+        return jsonify(response)
+
+    except Exception as e:
+        print("Failed to fetch order:", e)
+        return jsonify({'success': False, 'message': f'Error retrieving order: {e}'}), 500
+    
+@app.route('/fetch_order_details', methods=['POST'])
+def fetch_order_details():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+
+        # Correct the table name with backticks
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+
+        # Correct SQL syntax by escaping tables
+        cursor.execute("""
+            SELECT o.Customer_name, o.Item, o.Quantity, r.R_name AS RestaurantName
+            FROM `order` AS o  -- Use backticks to escape 'order'
+            JOIN orderrequest AS r ON o.Order_ID = r.Order_ID
+            WHERE o.Order_ID = %s
+        """, (order_id,))
+        
+        order_details = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if order_details:
+            return jsonify({'success': True, 'order_details': order_details})
+        else:
+            return jsonify({'success': False, 'message': 'No order details found'}), 404
+
+    except Exception as e:
+        print("Failed to fetch order details:", e)
+        return jsonify({'success': False, 'message': f'Error retrieving order details: {e}'}), 500
+    
+@app.route('/complete_delivery', methods=['POST'])
+def complete_delivery():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+        # Remove earnings since it's not part of any table 
+
+        # Connect to the database
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch necessary details for fulfillment logging
+        cursor.execute("""
+            SELECT r.R_name, o.Customer_name, r.Fees, r.Tip 
+            FROM orderrequest r
+            JOIN `order` o ON r.Order_ID = o.Order_ID
+            WHERE r.Order_ID = %s
+        """, (order_id,))
+        order_info = cursor.fetchone()
+
+        # Fetch driver name from the session's user ID
+        cursor.execute("""
+            SELECT Driver_Name 
+            FROM driver 
+            WHERE User_ID = %s
+        """, (session['user_id'],))
+        driver_info = cursor.fetchone()
+
+        # Update the order's status to 'Delivered'
+        cursor.execute("""
+            UPDATE orderrequest 
+            SET Order_D_Status = 'Delivered'
+            WHERE Order_ID = %s
+        """, (order_id,))
+
+        # Insert a record into order_fulfilled table
+        cursor.execute("""
+            INSERT INTO order_fulfilled (OrderR_ID, Customer_Name, 
+                                         Driver_Fee, Driver_Tip, Restaurant_Name, Driver_Name)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            order_id,
+            order_info['Customer_name'],
+            order_info['Fees'],
+            order_info['Tip'],
+            order_info['R_name'],
+            driver_info['Driver_Name'],
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Delivery completed and recorded.'})
+
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error updating order status: {e}'}), 500
+    
+@app.route('/update_order_status', methods=['POST'])
+def update_order_status():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    try:
+        order_id = request.json.get('order_id')
+
+        conn = database_connect()
+        cursor  = conn.cursor()
+
+        # Update the order's delivery status
+        cursor.execute("""
+            UPDATE orderrequest 
+            SET Order_D_Status = 'Picked Up'
+            WHERE Order_ID = %s
+        """, (order_id,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Order status updated successfully.'})
+    
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error updating order status: {e}'}), 500
+    
+@app.route('/order_decline', methods=['POST'])
+def order_decline():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
+
+    declined_order_id = request.form.get('order_id')
+    if declined_order_id:
+        declined_orders = session.get('declined_orders', [])
+        declined_orders.append(declined_order_id)
+        session['declined_orders'] = declined_orders
+        
+        # Optionally update the order's status back to available after a lock period ends
+        # cursor.execute("UPDATE orderrequest SET Order_D_Status = 'Waiting For Assignment' WHERE OrderR_ID = %s", (declined_order_id,))
+        # conn.commit()
+    
+    return jsonify({'success': True})
+@app.route('/nearby_cities', methods=['POST'])
+def nearby_cities():
+    data = request.get_json()
+    user_lat = float(data['lat'])
+    user_lon = float(data['lon'])
+    # List at least 5 cities, feel free to add more for full coverage!
+    cities = [
+        {'name': 'McAllen', 'lat': 26.2034, 'lon': -98.2300},
+        {'name': 'Edinburg', 'lat': 26.3017, 'lon': -98.1633},
+        {'name': 'Pharr', 'lat': 26.1948, 'lon': -98.1836},
+        {'name': 'Mission', 'lat': 26.2159, 'lon': -98.3253},
+        {'name': 'San Juan', 'lat': 26.1892, 'lon': -98.1553},
+        {'name': 'Donna', 'lat': 26.1706, 'lon': -98.0528},
+        {'name': 'Weslaco', 'lat': 26.1595, 'lon': -97.9908}
+        # ... add as many as needed!
+    ]
+    for city in cities:
+        km = haversine(user_lon, user_lat, city['lon'], city['lat'])
+        mi = km * 0.621371      # Convert kilometers to miles
+        city['distance'] = mi
+    cities.sort(key=lambda x: x['distance'])
+    html = ""
+    shown = 0
+    for city in cities:
+        html += f"""<div class="city-slot" data-city="{city['name']}"><b>{city['name']}</b> ({city['distance']:.1f} miles away)</div>"""
+        shown += 1
+        if shown >= 5:
+            break
+    return html
+@app.route('/user_scheduled_times', methods=['POST'])
+def user_scheduled_times():
+    if 'user_id' not in session:
+        return '', 401
+
+    user_id = session['user_id']
+    req = request.get_json()
+    selected_date = req['dateiso']    # ISO string, e.g. 2024-05-20
+
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT Start_Time, End_Time, Notes
+        FROM availability
+        WHERE User_ID = %s AND Date = %s
+        ORDER BY Start_Time
+    """, (user_id, selected_date))
+    slots = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    def time_to_str(val):
+        if hasattr(val, 'strftime'):
+            # It's a time object
+            return val.strftime('%I:%M %p').lstrip('0')
+        elif isinstance(val, timedelta):
+            # Convert to time and then use strftime
+            total_seconds = int(val.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            fake_time = datetime(1900, 1, 1, hours, minutes)
+            return fake_time.strftime('%I:%M %p').lstrip('0')
+        elif isinstance(val, str):
+            # fallback: naive slice string
+            # (optional: parse string to time for am/pm, but this covers most cases)
+            parsed = datetime.strptime(val[:5], '%H:%M')
+            return parsed.strftime('%I:%M %p').lstrip('0')
+        else:
+            return str(val)
+
+    html = ""
+    if not slots:
+        html = "<div style='text-align:center;color:#999;margin-top:24px;'>No scheduled times for this day.</div>"
+    else:
+        for s in slots:
+            html += f"""
+            <div class="scheduled-slot">
+                <b>{s['Notes']}</b><br>
+                {time_to_str(s['Start_Time'])} - {time_to_str(s['End_Time'])}
+            </div>"""
+    return html
+@app.route('/save_availability', methods=['POST'])
+def save_availability():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in.'}), 401
+
+    user_id = session['user_id']
+    city = request.form['city']
+    dateiso = request.form['dateiso']    # yyyy-mm-dd
+    day_of_week = request.form['day_of_week']  # "Monday", ...
+    start_time = request.form['start_time']    # HH:MM
+    end_time = request.form['end_time']
+
+    # Optional: save city in Notes column
+    notes = city
+
+    # Block past dates
+    if dateiso < date.today().isoformat():
+        return jsonify({'success': False, 'message': 'Cannot schedule in the past.'}), 400
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO availability (User_ID, Date, Day_of_Week, Start_Time, End_Time, Notes)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, dateiso, day_of_week, start_time, end_time, notes))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Delivery Time Saved'})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'message': 'Failed to Save'}), 500
+    
+@app.route('/update_account', methods=['POST'])
+def update_account():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in.'}), 401
+
+    user_id = session['user_id']
+    
+    # Gather form data
+    street_address = request.form['street_address']
+    suite_number = request.form['suite_number']
+    gate_number = request.form['gate_number']
+    city = request.form['city']
+    state = request.form['state']
+    zip_code = request.form['zip_code']
+    
+    vehicle = request.form['vehicle']
+    make = request.form['make']
+    model = request.form['model']
+    vehicle_color = request.form['vehicle_color']
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor()
+
+        # Update driver details
+        cursor.execute("""
+            UPDATE driver SET Vehicle = %s, Make = %s, Model = %s, Vehicle_Color = %s
+            WHERE User_ID = %s
+        """, (vehicle, make, model, vehicle_color, user_id))
+        
+        # Update address details
+        cursor.execute("""
+            UPDATE address SET Street_Address = %s, Suite_Number = %s, Gate_Number = %s,
+            City = %s, State = %s, ZIP_Code = %s
+            WHERE User_ID = %s AND Address_Type = 'home'
+        """, (street_address, suite_number, gate_number, city, state, zip_code, user_id))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Account updated successfully.'})
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'message': 'Failed to update account.'}), 500
+    
+@app.route('/earnings')
+def earnings():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Fetch earnings for the driver
+        cursor.execute("""
+            SELECT Driver_Fee, Driver_Tip, Customer_Name, Restaurant_Name
+            FROM order_fulfilled
+            WHERE Driver_Name = (SELECT Driver_Name FROM driver WHERE User_ID = %s)
+        """, (user_id,))
+        earnings_records = cursor.fetchall()
+
+        # Calculate total earnings
+        total_earnings = sum(record['Driver_Fee'] + record['Driver_Tip'] for record in earnings_records)
+
+        cursor.close()
+        conn.close()
+
+        return render_template(
+            'driver_dashboard.html',
+            total_earnings=total_earnings,
+            earnings_records=earnings_records,
+            active_tab='earnings'
+        )
+
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error fetching earnings: {e}'}), 500
+    
 @app.route('/business_dashboard')
 def business_dashboard():
     if 'user' not in session or session.get('user_type') != 'business':
