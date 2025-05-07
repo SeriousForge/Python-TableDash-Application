@@ -692,12 +692,14 @@
                     <li>Accuracy: {{ driver.Accuracy }}</li>
                 </ul>
                 {% elif active_tab == 'earnings' %}
-                <h2>Earnings</h2>
-                <ul>
-                    <li>Tips: ${{ driver.Driver_Tips }}</li>
-                    <!-- Add earnings breakdown if you wish -->
-                </ul>
-                {% endif %}
+<h2>Earnings</h2>
+<p><strong>Total Earnings:</strong> ${{ total_earnings }}</p>
+<ul>
+    {% for record in earnings_records %}
+    <li>{{ record.Customer_Name }} - {{ record.Restaurant_Name }}: ${{ record.Driver_Fee + record.Driver_Tip }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
             </div>
         </main>
     </div>

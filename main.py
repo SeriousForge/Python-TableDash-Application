@@ -126,6 +126,14 @@ def driver_dashboard():
     driver_info = cursor.fetchone()
 
     cursor.execute("""
+        SELECT Driver_Fee, Driver_Tip, Customer_Name, Restaurant_Name
+        FROM order_fulfilled
+        WHERE Driver_Name = %s
+    """, (driver_info['Driver_Name'],))
+    earnings_records = cursor.fetchall()
+    # Calculate total earnings
+    total_earnings = sum(record['Driver_Fee'] + record['Driver_Tip'] for record in earnings_records)
+    cursor.execute("""
         SELECT * FROM address
         WHERE User_ID = %s AND Address_Type = 'home'
     """, (user_id,))
@@ -142,7 +150,9 @@ def driver_dashboard():
         active_tab=tab,
         week_dates=week_dates,
         selected_idx=selected_idx,
-        ongoing_delivery=ongoing_delivery
+        ongoing_delivery=ongoing_delivery,
+        earnings_records=earnings_records,
+        total_earnings=total_earnings
     )
 def haversine(lon1, lat1, lon2, lat2):
     R = 6371
@@ -521,6 +531,45 @@ def update_account():
     except Exception as e:
         print(e)
         return jsonify({'success': False, 'message': 'Failed to update account.'}), 500
+    
+@app.route('/earnings')
+def earnings():
+    if 'user_id' not in session or session.get('user_type') != 'driver':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+
+    try:
+        conn = database_connect()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Fetch earnings for the driver
+        cursor.execute("""
+            SELECT Driver_Fee, Driver_Tip, Customer_Name, Restaurant_Name
+            FROM order_fulfilled
+            WHERE Driver_Name = (SELECT Driver_Name FROM driver WHERE User_ID = %s)
+        """, (user_id,))
+        earnings_records = cursor.fetchall()
+
+        # Calculate total earnings
+        total_earnings = sum(record['Driver_Fee'] + record['Driver_Tip'] for record in earnings_records)
+
+        cursor.close()
+        conn.close()
+
+        return render_template(
+            'driver_dashboard.html',
+            total_earnings=total_earnings,
+            earnings_records=earnings_records,
+            active_tab='earnings'
+        )
+
+    except mysql.connector.Error as err:
+        print("Database Error: ", err)
+        return jsonify({'success': False, 'message': f'Database error: {err}'}), 500
+    except Exception as e:
+        print("General Error: ", e)
+        return jsonify({'success': False, 'message': f'Error fetching earnings: {e}'}), 500
     
 @app.route('/business_dashboard')
 def business_dashboard():

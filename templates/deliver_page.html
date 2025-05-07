@@ -339,23 +339,26 @@ document.getElementById('pickup-info').innerHTML += `
 }
 
 function completeDelivery(orderId) {
+    // Calculate total earnings for logging purposes, though not updating driver's table
     const totalEarnings = window.currentOrder.Fees + window.currentOrder.Tip;
 
     fetch('{{ url_for("complete_delivery") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, earnings: totalEarnings })
+        body: JSON.stringify({ order_id: orderId })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Delivery completed. Earnings updated.');
-            document.getElementById('pickup-info').style.display = 'none'; // Hide pickup info if completed
-            document.getElementById('delivery-complete').innerHTML = "<p>Delivery completed. Thank you!</p>";
-            
-            // Optionally redirect back to dashboard or refresh the page.
+            alert('Delivery completed successfully.');
+            // Clear info section after delivery completion
+            document.getElementById('pickup-info').style.display = 'none';
+            document.getElementById('pickup-info').innerHTML = '';
+
+            // Optionally wait a little before fetching the next offer
             setTimeout(() => {
-                window.location.href = '{{ url_for("driver_dashboard", tab="offers") }}';
+                alert('Fetching a new delivery offer...');
+                fetchOrderOffer(); // Fetch new order offer immediately
             }, 2000);
         } else {
             console.error('Failed to complete delivery:', data.message);
