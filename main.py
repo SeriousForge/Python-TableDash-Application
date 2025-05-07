@@ -259,10 +259,28 @@ def complete_delivery():
 
     try:
         order_id = request.json.get('order_id')
-        earnings = request.json.get('earnings')  # Receive earnings for order
+        # Remove earnings since it's not part of any table 
 
+        # Connect to the database
         conn = database_connect()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+
+        # Fetch necessary details for fulfillment logging
+        cursor.execute("""
+            SELECT r.R_name, o.Customer_name, r.Fees, r.Tip 
+            FROM orderrequest r
+            JOIN `order` o ON r.Order_ID = o.Order_ID
+            WHERE r.Order_ID = %s
+        """, (order_id,))
+        order_info = cursor.fetchone()
+
+        # Fetch driver name from the session's user ID
+        cursor.execute("""
+            SELECT Driver_Name 
+            FROM driver 
+            WHERE User_ID = %s
+        """, (session['user_id'],))
+        driver_info = cursor.fetchone()
 
         # Update the order's status to 'Delivered'
         cursor.execute("""
@@ -270,19 +288,26 @@ def complete_delivery():
             SET Order_D_Status = 'Delivered'
             WHERE Order_ID = %s
         """, (order_id,))
-        
-        # Update driver's earnings
+
+        # Insert a record into order_fulfilled table
         cursor.execute("""
-            UPDATE driver 
-            SET Earnings = Earnings + %s
-            WHERE User_ID = %s
-        """, (earnings, session['user_id']))
+            INSERT INTO order_fulfilled (OrderR_ID, Customer_Name, 
+                                         Driver_Fee, Driver_Tip, Restaurant_Name, Driver_Name)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            order_id,
+            order_info['Customer_name'],
+            order_info['Fees'],
+            order_info['Tip'],
+            order_info['R_name'],
+            driver_info['Driver_Name'],
+        ))
 
         conn.commit()
         cursor.close()
         conn.close()
 
-        return jsonify({'success': True, 'message': 'Delivery completed and earnings updated.'})
+        return jsonify({'success': True, 'message': 'Delivery completed and recorded.'})
 
     except mysql.connector.Error as err:
         print("Database Error: ", err)
