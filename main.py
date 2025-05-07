@@ -212,40 +212,7 @@ def remove_from_cart():
     session['message'] = 'Item removed from cart.'
     return redirect(url_for('view_cart'))
 
-@app.route('/order_history')
-def order_history():
-    user_id = session.get('user_id')
-    conn = database_connect()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM orderrequest WHERE C_Name = %s", ('C_Name')),
-    orders = cursor.fetchall()
-    history = []
-    for order in orders:
-        cursor.execute("SELECT * FROM `order` WHERE Order_ID = %s", (order['Order_ID'],))
-        items = cursor.fetchall()
-        item_list = []
-        for i in items:
-            item_list.append({
-                'Item': i['Item'],
-                'Price': float(i['Price']),
-                'Quantity': i['Quantity'],
-                'Subtotal': float(i['Price']) * i['Quantity']
-            })
-        history.append({
-            'order_id': order['Order_ID'],
-            'Restaurant_Name': order['R_name'],
-            'Tip': float(order['Tip']),
-            'Total': float(order['Fees']) + float(order['Tip']),
-            'Request_Status': order['Order_R_Status'],
-            'Driver_Status': order['Order_D_Status'],
-            'Items': item_list
-        })
-    cursor.close()
-    conn.close()
-    return render_template('order_history.html', history=history)
-
-
-
+   
 @app.route('/toggle_favorite/<int:restaurant_id>', methods=['POST'])
 def toggle_favorite(restaurant_id):
     favorites = session.get('favorites', [])
@@ -305,7 +272,11 @@ def checkout():
 @app.route('/place_order', methods=['POST'])
 def place_order():
     cart = session.get('cart', [])
-    restaurant_id = cart[0]['Restaurant_ID'] if cart else None
+    if not cart:
+        session['message'] = 'Your cart is empty.'
+        return redirect(url_for('customer_dashboard'))
+
+    restaurant_id = cart[0]['Restaurant_ID']
     restaurant_name = next((item['Restaurant_Name'] for item in cart if 'Restaurant_Name' in item), "Unknown")
     tip_input = request.form.get('tip', '0')
 
@@ -328,33 +299,47 @@ def place_order():
             'Subtotal': subtotal
         })
 
-    # Insert into orderrequest without R_Address and C_Address
     conn = database_connect()
     cursor = conn.cursor()
 
-    # Get customer name only
     c_name = session.get('user') or 'Unknown'
 
+    # Insert into orderrequest (use OrderR_ID which is AUTO_INCREMENT)
+    cursor.execute("""
+        INSERT INTO orderrequest (R_name, C_Name, Fees, Tip, Order_R_Status, Order_D_Status)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (
+        restaurant_name,
+        c_name,
+        restaurant_total,
+        tip,
+        'requested',
+        'Waiting For Assignment'
+    ))
 
+    # Get the last inserted OrderR_ID to use in the order table
+    order_id = cursor.lastrowid
+
+    # Insert each item into the order table using the correct Order_ID reference
     for item in items_list:
         cursor.execute("""
-            INSERT INTO orderrequest (Order_ID, R_name, C_Name, Timestamp, Fees, Tip, Order_R_Status, Order_D_Status)
-            VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s)
+            INSERT INTO `order` (Order_ID, Customer_name, Restaurant_ID, Item, Item_ID, Price, Quantity)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
-            random.randint(1000, 9999),     # Order_ID (can be improved later)
-            restaurant_name,
+            order_id,
             c_name,
-            restaurant_total,
-            tip,
-            'requested',
-            'Waiting For Assignment'
+            restaurant_id,
+            item['Item'],
+            None,  # Replace with actual Item_ID if needed
+            item['Price'],
+            item['Quantity']
         ))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    # Clear cart
+    # Clear cart after order placement
     session.pop('cart', None)
 
     return redirect(url_for('order_history'))
@@ -393,6 +378,54 @@ def fulfill_order(order_id):
     return redirect(url_for('order_history'))
 
 
+@app.route('/order_history')
+def order_history():
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get current logged-in customer name
+    customer_name = session.get('user')
+
+    # Pull all orders for this customer from orderrequest table
+    cursor.execute("SELECT * FROM orderrequest WHERE C_Name = %s", (customer_name,))
+    orders = cursor.fetchall()
+
+    history = []
+
+    for order in orders:
+        order_id = order['OrderR_ID']  # ✅ use the correct primary key name
+
+        # Query items linked to this order
+        cursor.execute("""
+            SELECT Item, Price, Quantity
+            FROM `order`
+            WHERE Order_ID = %s
+        """, (order_id,))
+        items = cursor.fetchall()
+
+        item_list = []
+        for i in items:
+            item_list.append({
+                'Item': i['Item'],
+                'Price': float(i['Price']),
+                'Quantity': i['Quantity'],
+                'Subtotal': float(i['Price']) * i['Quantity']
+            })
+
+        history.append({
+            'order_id': order_id,
+            'Restaurant_Name': order['R_name'],
+            'Tip': float(order['Tip']),
+            'Total': float(order['Fees']) + float(order['Tip']),
+            'Request_Status': order['Order_R_Status'],
+            'Driver_Status': order['Order_D_Status'],
+            'Items': item_list
+        })
+
+    cursor.close()
+    conn.close()
+
+    return render_template('order_history.html', history=history)
 
 @app.route('/thank_you')
 def thank_you():
