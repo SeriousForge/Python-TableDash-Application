@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ restaurant.Restaurant_Name }} </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+            margin: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .menu-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .menu-item {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            width: 250px;
+            padding: 15px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .menu-img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .menu-item h3 {
+            margin: 0 0 5px;
+            font-size: 18px;
+        }
+
+        .menu-item p {
+            font-size: 14px;
+            color: #555;
+            font-style: italic;
+            margin: 5px 0 10px;
+        }
+
+        .menu-item .price {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .menu-item label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menu-item input[type="number"] {
+            width: 50px;
+            padding: 3px;
+        }
+
+        button {
+            display: block;
+            margin: 20px auto;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        a {
+            display: block;
+            text-align: center;
+            margin-top: 10px;
+            text-decoration: none;
+            color: #333;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ restaurant.Restaurant_Name }} </h1>
+
+    <form method="POST" action="{{ url_for('add_to_cart', restaurant_id=restaurant_id) }}">
+        <div class="menu-container">
+            {% for item in menu_items %}
+            <div class="menu-item">
+                <img src="{{ url_for('static', filename=restaurant.Restaurant_Name.replace(' ', '').lower() + '_menu/' + item.Item.replace(' ', '').lower() + '.png') }}" 
+                     alt="{{ item.Item }}" class="menu-img">
+                <h3>{{ item.Item }}</h3>
+                <div class="price">${{ "%.2f"|format(item.Price) }}</div>
+                <p>{{ item.Description }}</p>
+                <label>
+                    <input type="checkbox" name="selected_items" value="{{ item.menu_ID }}">
+                    Quantity: <input type="number" name="quantity_{{ item.menu_ID }}" value="1" min="1">
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+
+        <button type="submit">Add to Cart</button>
+    </form>
+
+    <a href="{{ url_for('customer_dashboard') }}">Back to Dashboard</a>
+</body>
+</html>

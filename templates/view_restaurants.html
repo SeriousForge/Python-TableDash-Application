@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select a Restaurant</title>
+</head>
+<body>
+    <h1>Browse Restaurants</h1>
+
+    <ul>
+        {% for restaurant in restaurants %}
+            <li>
+                <strong>{{ restaurant.Restaurant_Name }}</strong><br>
+                Location: {{ restaurant.Location }}<br>
+                <a href="{{ url_for('view_menu', restaurant_id=restaurant.Restaurant_ID) }}">View Menu</a>
+            </li>
+        {% endfor %}
+    </ul>
+
+    <a href="{{ url_for('customer_dashboard') }}">Back to Dashboard</a>
+</body>
+</html>
