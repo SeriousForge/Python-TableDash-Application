@@ -277,7 +277,6 @@ def place_order():
         return redirect(url_for('customer_dashboard'))
 
     restaurant_id = cart[0]['Restaurant_ID']
-    restaurant_name = next((item['Restaurant_Name'] for item in cart if 'Restaurant_Name' in item), "Unknown")
     tip_input = request.form.get('tip', '0')
 
     try:
@@ -285,61 +284,97 @@ def place_order():
     except ValueError:
         tip = 0.0
 
-    items_list = []
-    restaurant_total = 0.0
-
-    for item in cart:
-        price = float(item['Price'])
-        subtotal = price * item['Quantity']
-        restaurant_total += subtotal
-        items_list.append({
-            'Item': item['Item'],
-            'Price': price,
-            'Quantity': item['Quantity'],
-            'Subtotal': subtotal
-        })
+    # Calculate total for the restaurant
+    restaurant_total = sum(float(item['Price']) * item['Quantity'] for item in cart)
 
     conn = database_connect()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
-    c_name = session.get('user') or 'Unknown'
+    # Fetch customer and restaurant information with addresses
+    user_id = session.get('user_id')
 
-    # Insert into orderrequest (use OrderR_ID which is AUTO_INCREMENT)
+    # Customer info with address
     cursor.execute("""
-        INSERT INTO orderrequest (R_name, C_Name, Fees, Tip, Order_R_Status, Order_D_Status)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        restaurant_name,
-        c_name,
-        restaurant_total,
-        tip,
-        'requested',
-        'Waiting For Assignment'
-    ))
+        SELECT c.Customer_Fname, c.Customer_LName, c.Customer_ID, 
+               ca.Street_Address AS C_Street_Address, ca.City AS C_City, ca.ZIP_Code AS C_Zip
+        FROM customer c
+        JOIN address ca ON c.User_ID = ca.User_ID
+        WHERE c.User_ID = %s
+    """, (user_id,))
+    customer_data = cursor.fetchone()
 
-    # Get the last inserted OrderR_ID to use in the order table
-    order_id = cursor.lastrowid
+    if not customer_data:
+        session['message'] = 'Unable to fetch customer information.'
+        cursor.close()
+        conn.close()
+        return redirect(url_for('customer_dashboard'))
 
-    # Insert each item into the order table using the correct Order_ID reference
-    for item in items_list:
+    c_name = f"{customer_data['Customer_Fname']} {customer_data['Customer_LName']}"
+    customer_id = customer_data['Customer_ID']
+
+    # Restaurant info with address
+    cursor.execute("""
+        SELECT r.Restaurant_Name, a.Street_Address AS R_Street_Address, a.City AS R_City, a.ZIP_Code AS R_Zip
+        FROM restaurant r
+        JOIN address a ON r.User_ID = a.User_ID
+        WHERE r.Restaurant_ID = %s
+    """, (restaurant_id,))
+    restaurant_data = cursor.fetchone()
+
+    if not restaurant_data:
+        session['message'] = 'Unable to fetch restaurant information.'
+        cursor.close()
+        conn.close()
+        return redirect(url_for('customer_dashboard'))
+
+    r_name = restaurant_data['Restaurant_Name']
+
+    # Insert each item into the `order` table
+    for item in cart:
         cursor.execute("""
-            INSERT INTO `order` (Order_ID, Customer_name, Restaurant_ID, Item, Item_ID, Price, Quantity)
+            INSERT INTO `order` (Customer_name, Restaurant_ID, Customer_ID, Item, Item_ID, Price, Quantity)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
-            order_id,
             c_name,
             restaurant_id,
+            customer_id,
             item['Item'],
-            None,  # Replace with actual Item_ID if needed
+            item['menu_ID'],  # Assuming menu_ID maps to Item_ID
             item['Price'],
             item['Quantity']
         ))
 
     conn.commit()
+
+    # Use the last inserted Order_ID to reference in orderrequest
+    cursor.execute("SELECT LAST_INSERT_ID();")
+    order_id = cursor.fetchone()['LAST_INSERT_ID()']
+
+    # Insert into orderrequest using the obtained Order_ID
+    cursor.execute("""
+        INSERT INTO orderrequest (Order_ID, R_name, R_Address, R_City, R_Zip, C_Name, C_Address, C_City, C_Zip, Fees, Tip, Order_R_Status, Order_D_Status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        order_id,
+        r_name,
+        restaurant_data['R_Street_Address'],
+        restaurant_data['R_City'],
+        restaurant_data['R_Zip'],
+        c_name,
+        customer_data['C_Street_Address'],
+        customer_data['C_City'],
+        customer_data['C_Zip'],
+        restaurant_total,
+        tip,
+        'new',
+        'Waiting For Assignment'
+    ))
+
+    conn.commit()
     cursor.close()
     conn.close()
 
-    # Clear cart after order placement
+    # Clear cart after successfully placing the order
     session.pop('cart', None)
 
     return redirect(url_for('order_history'))
