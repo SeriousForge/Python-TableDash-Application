@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order History</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f7fa; text-align: center; padding: 30px; }
+        h1 { color: #2196F3; font-size: 2.5em; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        table { margin: 20px auto; border-collapse: collapse; width: 80%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 10px; }
+        th, td { padding: 12px; border: 1px solid #ddd; }
+        th { background: linear-gradient(45deg, #2196F3, #42A5F5); color: white; }
+        .dashboard-link { display: inline-block; padding: 15px 30px; background: #2196F3; color: white; text-decoration: none; border-radius: 30px; font-size: 16px; margin-top: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .dashboard-link:hover { background: #1976D2; }
+        h2 { margin-top: 40px; }
+        .grand-total { font-weight: bold; font-size: 1.2em; margin-top: 20px; }
+        .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.9em; color: white; }
+        .status-requested { background: orange; }
+        .status-accepted { background: blue; }
+        .status-rejected { background: red; }
+        .status-fulfilled { background: green; }
+    </style>
+</head>
+<body>
+
+<h1><i class="fa fa-clipboard-list"></i> Order History</h1>
+
+{% if history %}
+    {% set ns = namespace(grand_total=0) %}
+    {% for order in history %}
+        <h2>{{ order.Restaurant_Name }}</h2>
+
+        <p>
+            Request Status:
+            {% if order.Request_Status == 'fulfilled' %}
+                <span class="status-badge status-fulfilled">Fulfilled</span>
+            {% elif order.Request_Status == 'accepted' %}
+                <span class="status-badge status-accepted">Accepted</span>
+            {% elif order.Request_Status == 'rejected' %}
+                <span class="status-badge status-rejected">Rejected</span>
+            {% else %}
+                <span class="status-badge status-requested">Requested</span>
+            {% endif %}
+        </p>
+
+        <p>Driver Status: {{ order.Driver_Status }}</p>
+
+        {% if order.Reject_Reason %}
+        <p>Reject Reason: {{ order.Reject_Reason }}</p>
+        {% endif %}
+
+        <table>
+            <tr><th>Item</th><th>Price</th><th>Quantity</th><th>Subtotal</th></tr>
+            {% for item in order.Items %}
+                <tr>
+                    <td>{{ item.Item }}</td>
+                    <td>{{ "%.2f"|format(item.Price) }}</td>
+                    <td>{{ item.Quantity }}</td>
+                    <td>{{ "%.2f"|format(item.Subtotal) }}</td>
+                </tr>
+            {% endfor %}
+            <tr>
+                <td colspan="3" style="text-align: right;"><strong>Tip:</strong></td>
+                <td>{{ "%.2f"|format(order.Tip if order.Tip is defined else 0.0) }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right;"><strong>Total:</strong></td>
+                <td><strong>{{ "%.2f"|format(order.Total if order.Total is defined else 0.0) }}</strong></td>
+            </tr>                       
+            {% set ns.grand_total = ns.grand_total + (order.Total if order.Total is defined else 0.0) %}
+        </table>
+
+    {% endfor %}
+    <p class="grand-total">Grand Total Across All Orders: {{ "%.2f"|format(ns.grand_total) }}</p>
+{% else %}
+    <p>No orders yet in your history.</p>
+{% endif %}
+
+<a href="{{ url_for('customer_dashboard') }}" class="dashboard-link">Back to Dashboard</a>
+
+</body>
+</html>

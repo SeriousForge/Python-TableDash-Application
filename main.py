@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import mysql.connector
+import random
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
@@ -7,17 +8,34 @@ from math import radians, sin, cos, sqrt, atan2
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
-# Database configuration
 DATABASE_CONFIG = {
     "host": "localhost",
-    "user": "SeriousForge",
-    "password": "1411Stud3nt!",
+    "user": "root",
+    "password": "",
     "database": "TableDash"
 }
 
 def database_connect():
     return mysql.connector.connect(**DATABASE_CONFIG)
+def create_orders_table():
+    conn = database_connect()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS confirmed_orders (
+            order_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(50),
+            item VARCHAR(100),
+            quantity INT,
+            price DECIMAL(10,2),
+            tip DECIMAL(10,2),
+            total DECIMAL(10,2),
+            order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    conn.close()
 
+create_orders_table()
 def clean_past_availabilities_for_driver(user_id):
     today = date.today().isoformat()
     try:
@@ -43,7 +61,6 @@ def schedule_cleanup_for_driver(user_id):
 
 @app.route('/')
 def splash():
-    # Shows splash for 3 seconds, then redirects
     return render_template('splash.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -53,7 +70,6 @@ def login():
         password = request.form['password']
         conn = database_connect()
         cursor = conn.cursor()
-        # SELECT both User_ID and User_Type!
         cursor.execute(
             "SELECT User_ID, User_Type FROM user WHERE User_Email = %s AND User_Password = %s",
             (email, password)
@@ -66,6 +82,8 @@ def login():
             session['user'] = email
             session['user_type'] = user_type
             session['user_id'] = user_id
+            session.pop('cart', None)
+            session.pop('history', None)
             if user_type == 'customer':
                 return redirect(url_for('customer_dashboard'))
             elif user_type == 'driver':
@@ -73,17 +91,43 @@ def login():
             elif user_type == 'business':
                 return redirect(url_for('business_dashboard'))
             else:
-                flash('Unknown user type', 'danger')
+                session['message'] = 'Unknown user type'
                 return redirect(url_for('login'))
         else:
-            flash('Invalid credentials', 'danger')
+            session['message'] = 'Invalid credentials'
     return render_template('login.html')
 
 @app.route('/customer_dashboard')
 def customer_dashboard():
-    if 'user' not in session or session.get('user_type') != 'customer':
-        return redirect(url_for('login'))
-    return render_template('customer_dashboard.html', email=session['user'])
+    user_name = session.get('user') or 'Customer'
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT Restaurant_ID as id, Restaurant_Name as name, Restaurant_Rating as rating FROM restaurant")
+    restaurants = cursor.fetchall()
+
+    for r in restaurants:
+        r['delivery_time'] = random.randint(20, 60)
+
+    favorites = session.get('favorites', [])
+    cart = session.get('cart', [])
+    cart_count = len(cart)
+
+    show_favorites = request.args.get('show_favorites')
+    if show_favorites:
+        restaurants = [r for r in restaurants if r['id'] in favorites]
+
+    cursor.close()
+    conn.close()
+    
+    return render_template('customer_dashboard.html',
+        user_name=user_name,
+        featured_restaurants=restaurants,
+        cart_count=cart_count,
+        favorites=favorites,
+        show_favorites=bool(show_favorites),
+        last_ordered_restaurant=session.get('last_ordered_restaurant')
+    )
 
 @app.route('/driver_dashboard')
 def driver_dashboard():
@@ -579,11 +623,350 @@ def business_dashboard():
 
 @app.route('/logout')
 def logout():
-    session.pop('user', None)
-    session.pop('user_type', None)
-    session.pop('user_id', None)
-    flash('Logged out.', 'info')
+    session.clear()
+    session['message'] = 'Logged out.'
     return redirect(url_for('login'))
+
+@app.route('/restaurants')
+def view_restaurants():
+    if 'user' not in session or session.get('user_type') != 'customer':
+        return redirect(url_for('login'))
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM restaurant")
+    restaurants = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('view_restaurants.html', restaurants=restaurants)
+
+@app.route('/menu/<int:restaurant_id>')
+def view_menu(restaurant_id):
+    if 'user' not in session or session.get('user_type') != 'customer':
+        return redirect(url_for('login'))
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT Restaurant_Name FROM restaurant WHERE Restaurant_ID = %s", (restaurant_id,))
+    restaurant = cursor.fetchone()
+    cursor.execute("SELECT * FROM menu WHERE Restaurant_ID = %s", (restaurant_id,))
+    rows = cursor.fetchall()
+    unique_items = []
+    seen_items = set()
+    for row in rows:
+        if row['Item'] not in seen_items:
+            unique_items.append(row)
+            seen_items.add(row['Item'])
+    cursor.close()
+    conn.close()
+    restaurant_name = restaurant['Restaurant_Name'] if restaurant else "Unknown Restaurant"
+    return render_template('view_menu.html', restaurant=restaurant, restaurant_name=restaurant_name, menu_items=unique_items, restaurant_id=restaurant_id)
+
+@app.route('/add_to_cart/<int:restaurant_id>', methods=['POST'])
+def add_to_cart(restaurant_id):
+    selected_items = request.form.getlist('selected_items')
+    cart = session.get('cart', [])
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # ✅ Fetch restaurant name once
+    cursor.execute("SELECT Restaurant_Name FROM restaurant WHERE Restaurant_ID = %s", (restaurant_id,))
+    restaurant_row = cursor.fetchone()
+    restaurant_name = restaurant_row['Restaurant_Name'] if restaurant_row else "Unknown"
+
+    for item_id in selected_items:
+        quantity = int(request.form.get(f'quantity_{item_id}', 1))
+        cursor.execute("SELECT * FROM menu WHERE menu_ID = %s", (item_id,))
+        item = cursor.fetchone()
+        if item:
+            cart.append({
+                'menu_ID': item['menu_ID'],
+                'Item': item['Item'],
+                'Price': item['Price'],
+                'Quantity': quantity,
+                'Restaurant_ID': restaurant_id,
+                'Restaurant_Name': restaurant_name  # ✅ add restaurant name into cart
+            })
+
+    cursor.close()
+    conn.close()
+    session['cart'] = cart
+    session['message'] = f"Added {len(selected_items)} items to cart!"
+    return redirect(url_for('checkout'))
+
+@app.route('/reset_history')
+def reset_history():
+    session.pop('history', None)
+    return "Session history cleared!"
+
+
+@app.route('/remove_from_cart', methods=['POST'])
+def remove_from_cart():
+    menu_ID = request.form.get('menu_ID')
+    restaurant_ID = int(request.form.get('restaurant_ID'))
+    cart = session.get('cart', [])
+    updated_cart = [item for item in cart if not (item['menu_ID'] == menu_ID and item['Restaurant_ID'] == restaurant_ID)]
+    session['cart'] = updated_cart
+    session.modified = True
+    session['message'] = 'Item removed from cart.'
+    return redirect(url_for('view_cart'))
+
+   
+@app.route('/toggle_favorite/<int:restaurant_id>', methods=['POST'])
+def toggle_favorite(restaurant_id):
+    favorites = session.get('favorites', [])
+    if restaurant_id in favorites:
+        favorites.remove(restaurant_id)
+    else:
+        favorites.append(restaurant_id)
+    session['favorites'] = favorites
+    return {'is_favorite': restaurant_id in favorites}
+
+@app.route('/order_again/<int:restaurant_id>', methods=['POST'])
+def order_again(restaurant_id):
+    history = session.get('history', [])
+    cart = session.get('cart', [])
+    for order in history:
+        if order.get('Restaurant_Name') and order.get('Restaurant_ID') == restaurant_id:
+            for item in order['Items']:
+                cart.append({
+                    'menu_ID': None,
+                    'Item': item['Item'],
+                    'Price': item['Price'],
+                    'Quantity': item['Quantity'],
+                    'Restaurant_ID': restaurant_id
+                })
+    session['cart'] = cart
+    session['message'] = 'Previous order added to cart!'
+    return redirect(url_for('checkout'))
+
+
+@app.route('/update_quantity', methods=['POST'])
+def update_quantity():
+    menu_ID = request.form.get('menu_ID')
+    restaurant_ID = int(request.form.get('restaurant_ID'))
+    new_quantity = int(request.form.get('quantity'))
+    cart = session.get('cart', [])
+    for item in cart:
+        if item['menu_ID'] == menu_ID and item['Restaurant_ID'] == restaurant_ID:
+            item['Quantity'] = new_quantity
+            break
+    session['cart'] = cart
+    session.modified = True
+    session['message'] = 'Quantity updated.'
+    return redirect(url_for('view_cart'))
+
+@app.route('/checkout')
+def checkout():
+    cart = session.get('cart', [])
+    if not cart:
+        session['message'] = 'Your cart is empty.'
+        return redirect(url_for('customer_dashboard'))  # or 'order_history'
+    total = sum(float(item['Price']) * item['Quantity'] for item in cart)
+    restaurant_name = cart[0]['Restaurant_Name'] if cart else "Unknown"
+    return render_template('checkout.html', cart=cart, total=total, restaurant_name=restaurant_name)
+
+
+
+@app.route('/place_order', methods=['POST'])
+def place_order():
+    cart = session.get('cart', [])
+    if not cart:
+        session['message'] = 'Your cart is empty.'
+        return redirect(url_for('customer_dashboard'))
+
+    restaurant_id = cart[0]['Restaurant_ID']
+    tip_input = request.form.get('tip', '0')
+
+    try:
+        tip = float(tip_input)
+    except ValueError:
+        tip = 0.0
+
+    # Calculate total for the restaurant
+    restaurant_total = sum(float(item['Price']) * item['Quantity'] for item in cart)
+
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Fetch customer and restaurant information with addresses
+    user_id = session.get('user_id')
+
+    # Customer info with address
+    cursor.execute("""
+        SELECT c.Customer_Fname, c.Customer_LName, c.Customer_ID, 
+               ca.Street_Address AS C_Street_Address, ca.City AS C_City, ca.ZIP_Code AS C_Zip
+        FROM customer c
+        JOIN address ca ON c.User_ID = ca.User_ID
+        WHERE c.User_ID = %s
+    """, (user_id,))
+    customer_data = cursor.fetchone()
+
+    if not customer_data:
+        session['message'] = 'Unable to fetch customer information.'
+        cursor.close()
+        conn.close()
+        return redirect(url_for('customer_dashboard'))
+
+    c_name = f"{customer_data['Customer_Fname']} {customer_data['Customer_LName']}"
+    customer_id = customer_data['Customer_ID']
+
+    # Restaurant info with address
+    cursor.execute("""
+        SELECT r.Restaurant_Name, a.Street_Address AS R_Street_Address, a.City AS R_City, a.ZIP_Code AS R_Zip
+        FROM restaurant r
+        JOIN address a ON r.User_ID = a.User_ID
+        WHERE r.Restaurant_ID = %s
+    """, (restaurant_id,))
+    restaurant_data = cursor.fetchone()
+
+    if not restaurant_data:
+        session['message'] = 'Unable to fetch restaurant information.'
+        cursor.close()
+        conn.close()
+        return redirect(url_for('customer_dashboard'))
+
+    r_name = restaurant_data['Restaurant_Name']
+
+    # Insert each item into the `order` table
+    for item in cart:
+        cursor.execute("""
+            INSERT INTO `order` (Customer_name, Restaurant_ID, Customer_ID, Item, Item_ID, Price, Quantity)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            c_name,
+            restaurant_id,
+            customer_id,
+            item['Item'],
+            item['menu_ID'],  # Assuming menu_ID maps to Item_ID
+            item['Price'],
+            item['Quantity']
+        ))
+
+    conn.commit()
+
+    # Use the last inserted Order_ID to reference in orderrequest
+    cursor.execute("SELECT LAST_INSERT_ID();")
+    order_id = cursor.fetchone()['LAST_INSERT_ID()']
+
+    # Insert into orderrequest using the obtained Order_ID
+    cursor.execute("""
+        INSERT INTO orderrequest (Order_ID, R_name, R_Address, R_City, R_Zip, C_Name, C_Address, C_City, C_Zip, Fees, Tip, Order_R_Status, Order_D_Status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        order_id,
+        r_name,
+        restaurant_data['R_Street_Address'],
+        restaurant_data['R_City'],
+        restaurant_data['R_Zip'],
+        c_name,
+        customer_data['C_Street_Address'],
+        customer_data['C_City'],
+        customer_data['C_Zip'],
+        restaurant_total,
+        tip,
+        'new',
+        'Waiting For Assignment'
+    ))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    # Clear cart after successfully placing the order
+    session.pop('cart', None)
+
+    return redirect(url_for('order_history'))
+
+
+@app.route('/confirm_order', methods=['POST'])
+def confirm_order():
+    action = request.form['action']
+    if action == 'place':
+        tip_str = request.form.get('tip', '0.00')
+        return place_order()
+    elif action == 'cancel':
+        session.pop('cart', None)  # ✅ clear cart
+        session['message'] = 'Order canceled successfully.'
+        return redirect(url_for('order_history'))
+
+
+@app.route('/cancel_order', methods=['POST'])
+def cancel_order():
+    session.pop('order', None)
+    session['message'] = 'Order was canceled.'
+    return redirect(url_for('customer_dashboard'))
+
+@app.route('/fulfill_order/<int:order_id>', methods=['POST'])
+def fulfill_order(order_id):
+    conn = database_connect()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE orderrequest SET Order_R_Status = 'fulfilled' WHERE Order_ID = %s
+    """, (order_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    session['message'] = f"Order {order_id} marked as fulfilled."
+    return redirect(url_for('order_history'))
+
+
+@app.route('/order_history')
+def order_history():
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Use User_ID to cross-reference orders instead of name for more reliable identification
+    user_id = session.get('user_id')
+
+    # Ensure all relevant orders for the logged-in customer are fetched
+    cursor.execute("""
+        SELECT *
+        FROM orderrequest
+        WHERE C_Name = (SELECT CONCAT(Customer_Fname, ' ', Customer_LName) FROM customer WHERE User_ID = %s)
+    """, (user_id,))
+    orders = cursor.fetchall()
+
+    history = []
+
+    for order in orders:
+        order_id = order['Order_ID']  # Use Order_ID to match with items in the `order` table
+
+        # Query items linked to this order using the correct Order_ID
+        cursor.execute("""
+            SELECT Item, Price, Quantity
+            FROM `order`
+            WHERE Order_ID = %s
+        """, (order_id,))
+        items = cursor.fetchall()
+
+        item_list = []
+        for i in items:
+            item_list.append({
+                'Item': i['Item'],
+                'Price': float(i['Price']),
+                'Quantity': i['Quantity'],
+                'Subtotal': float(i['Price']) * i['Quantity']
+            })
+
+        # Collect and calculate the total for display
+        history.append({
+            'order_id': order_id,
+            'Restaurant_Name': order['R_name'],
+            'Tip': float(order['Tip']),
+            'Total': float(order['Fees']) + float(order['Tip']),
+            'Request_Status': order['Order_R_Status'],
+            'Driver_Status': order['Order_D_Status'],
+            'Items': item_list
+        })
+
+    cursor.close()
+    conn.close()
+
+    return render_template('order_history.html', history=history)
+
+@app.route('/thank_you')
+def thank_you():
+    return render_template('thank_you.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
