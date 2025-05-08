@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Account</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        function toggleEdit(sectionId) {
+            var text = document.getElementById(sectionId);
+            var form = document.getElementById(sectionId + "_form");
+            var button = document.getElementById(sectionId + "_button");
+
+            if (form.style.display === "none") {
+                form.style.display = "block";
+                text.style.display = "none";
+                button.innerHTML = "Cancel";
+            } else {
+                form.style.display = "none";
+                text.style.display = "block";
+                button.innerHTML = "Edit";
+            }
+        }
+    </script>
+</head>
+<body>
+    <nav>
+        <a href="{{ url_for('business_dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('past_orders') }}">Past Orders</a>
+        <a href="{{ url_for('view_accepted_orders') }}">Accepted Orders</a>
+        <a href="{{ url_for('edit_account') }}">Edit Account</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+
+    <h1>Edit Account Information</h1>
+
+    <form method="POST">
+        <!-- Restaurant Address -->
+        <div class="edit-section">
+            <h3>Restaurant Address:</h3>
+            <div>
+                <p id="address">{{ address_info.Street_Address or "Not yet Available" }}</p>
+                <div id="address_form" style="display:none;">
+                    <input type="text" name="street_address" value="{{ address_info.Street_Address or '' }}">
+                </div>
+                <button type="button" id="address_button" onclick="toggleEdit('address')">Edit</button>
+            </div>
+        </div>
+
+        <!-- Business Hours -->
+        <div class="edit-section">
+            <h3>Business Hours:</h3>
+            {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+                {% set start_time = weekly_hours.get(day, {}).get('start_time') %}
+                {% set end_time = weekly_hours.get(day, {}).get('end_time') %}
+                
+                <div>
+                    {% if start_time and end_time %}
+                        <p id="hours_{{ day }}">{{ day }}: {{ start_time }} - {{ end_time }}</p>
+                        <div id="hours_form_{{ day }}" style="display:none;">
+                            <label for="hours_{{ day }}_start">Start Time:</label>
+                            <input type="time" name="hours[{{ day }}][start_time]" value="{{ start_time or '' }}">
+                            
+                            <label for="hours_{{ day }}_end">End Time:</label>
+                            <input type="time" name="hours[{{ day }}][end_time]" value="{{ end_time or '' }}">
+                        </div>
+                        <button type="button" id="hours_button_{{ day }}" onclick="toggleEdit('hours_{{ day }}')">Edit</button>
+                    {% else %}
+                        <div id="hours_form_{{ day }}">
+                            <label>{{ day }} Start Time:</label>
+                            <input type="time" name="hours[{{ day }}][start_time]" value="{{ start_time or '' }}">
+                            
+                            <label>{{ day }} End Time:</label>
+                            <input type="time" name="hours[{{ day }}][end_time]" value="{{ end_time or '' }}">
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+        <div>
+            <button type="submit">Save Changes</button>
+        </div>
+    </form>
+</body>
+</html>

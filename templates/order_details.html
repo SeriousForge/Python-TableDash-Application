@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <h1>Order Details</h1>
+
+    {% if order %}
+    <div class="order-details">
+        <p><strong>Order ID:</strong> {{ order.Order_ID }}</p>
+        <p><strong>Customer Name:</strong> {{ order.Customer_name }}</p>
+        <p><strong>Item:</strong> {{ order.Item }}</p>
+        <p><strong>Quantity:</strong> {{ order.Quantity }}</p>
+        <p><strong>Price:</strong> ${{ order.Price }}</p>
+        <p><strong>Timestamp:</strong> {{ order.Timestamp }}</p>
+        <p><strong>Status:</strong> {{ order.Order_Status }}</p>
+        {% if order.Reject_Reason %}
+        <p><strong>Rejection Reason:</strong> {{ order.Reject_Reason }}</p>
+        {% endif %}
+        <p><strong>Address:</strong> {{ order.C_Address }}, {{ order.C_City }}, {{ order.C_Zip }}</p>
+    </div>
+    {% else %}
+        <p>Order not found.</p>
+    {% endif %}
+
+</body>
+</html>

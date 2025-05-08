@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Past Orders - {{ restaurant_name }}</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+<body>
+    <nav>
+        <a href="{{ url_for('business_dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('past_orders') }}">Past Orders</a>
+        <a href="{{ url_for('view_accepted_orders') }}">Accepted Orders</a>
+        <a href="{{ url_for('edit_account') }}">Edit Account</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+    <h1>Past Orders for {{ restaurant_name }}</h1>
+
+    {% if orders %}
+        {% set current_order = None %}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Customer Name</th>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Timestamp</th>
+                    <th>Rejection Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                    {% if current_order != order.Order_ID %}
+                        {% set current_order = order.Order_ID %}
+                    {% endif %}
+                    <tr>
+                        <td>{{ order.C_Name }}</td>
+                        <td>{{ order.Item }}</td>
+                        <td>{{ order.Quantity }}</td>
+                        <td>${{ order.Price }}</td>
+                        <td>{{ order.Timestamp }}</td>
+                        <td>{{ order.Reject_Reason or 'N/A' }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No past orders available.</p>
+    {% endif %}
+</body>
+</html>

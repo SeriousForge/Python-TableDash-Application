@@ -1,10 +1,10 @@
 import mysql.connector
 
 DATABASE_CONFIG = {
-    "host": "localhost",
-    "user": "SeriousForge",
-    "password": "1411Stud3nt!",
-    "database": "TableDash"
+    "host": "localhost",      # XAMPP uses localhost for MySQL
+    "user": "root",           # Default MySQL username for XAMPP
+    "password": "",           # Default password is empty for XAMPP
+    "database": "tabledash"   # Name of the database you created/imported
 }
 
 def test_login(email, password):

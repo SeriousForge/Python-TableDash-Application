@@ -1,18 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import mysql.connector
 import random
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
+
 DATABASE_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "",
-    "database": "TableDash"
+    "host": "localhost",      # XAMPP uses localhost for MySQL
+    "user": "root",           # Default MySQL username for XAMPP
+    "password": "",           # Default password is empty for XAMPP
+    "database": "TableDash"   # Name of the database you created/imported
 }
 
 def database_connect():
@@ -228,46 +230,56 @@ def order_offer():
     if 'user_id' not in session or session.get('user_type') != 'driver':
         return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
 
-    declined_orders = session.get('declined_orders', [])
+    if 'order_index' not in session:
+        session['order_index'] = 0
+
+    if 'declined_orders' not in session:
+        session['declined_orders'] = []
+
+    declined_orders = set(session['declined_orders'])  # Use a set for faster lookup
 
     try:
         conn = database_connect()
         cursor = conn.cursor(dictionary=True)
 
-        # Fetch the latest order that's not rejected and not declined by this driver
+        # Fetch all available orders
         cursor.execute("""
-            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip, 
+            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip,
                    C_Name, C_Address, C_City, C_Zip, Fees, Tip
             FROM orderrequest
-            WHERE Order_R_Status != 'rejected' 
+            WHERE Order_R_Status != 'rejected'
               AND Order_D_Status = 'Waiting For Assignment'
-              AND OrderR_ID NOT IN (%s)
-            ORDER BY Timestamp ASC LIMIT 1
-        """, (','.join(['%s'] * len(declined_orders)), *declined_orders))
-        order = cursor.fetchone()
-
-        if order:
-            # Implement a temporary lock (e.g., 1-minute lock) by updating the order
-            cursor.execute("""
-                UPDATE orderrequest 
-                SET Order_D_Status = 'Being Viewed'
-                WHERE OrderR_ID = %s
-            """, (order['OrderR_ID'],))
-            conn.commit()
-
-            total_offer_amount = float(order['Fees'] + order['Tip'])
-            response = {
-                'success': True,
-                'order': order,
-                'total_offer_amount': total_offer_amount
-            }
-        else:
-            response = {'success': False, 'message': 'No orders available'}
-
+        """)
+        
+        orders = cursor.fetchall()
         cursor.close()
         conn.close()
 
-        return jsonify(response)
+        total_orders = len(orders)
+
+        # If no orders are available, return a failure message
+        if total_orders == 0:
+            return jsonify({'success': False, 'message': 'No orders available'})
+
+        # Find the next valid order after current index
+        for _ in range(total_orders):
+            current_idx = session['order_index'] % total_orders
+            current_order = orders[current_idx]
+
+            session['order_index'] = (session['order_index'] + 1) % total_orders  # Move to next order, wrap direction
+
+            if current_order['OrderR_ID'] not in declined_orders:
+                total_offer_amount = float(current_order['Fees'] + current_order['Tip'])
+                return jsonify({
+                    'success': True,
+                    'order': current_order,
+                    'total_offer_amount': total_offer_amount
+                })
+
+        # If all orders have been declined, reset the index and return a failure message
+        session['order_index'] = 0
+        session['declined_orders'].clear()
+        return jsonify({'success': False, 'message': 'All orders declined, restarting queue...'})
 
     except Exception as e:
         print("Failed to fetch order:", e)
@@ -619,7 +631,349 @@ def earnings():
 def business_dashboard():
     if 'user' not in session or session.get('user_type') != 'business':
         return redirect(url_for('login'))
-    return render_template('business_dashboard.html', email=session['user'])
+    
+    user_id = session.get('user_id')
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT * FROM restaurant WHERE User_ID = %s", (user_id,))
+    result = cursor.fetchone()
+    restaurant_name = result['Restaurant_Name'] if result else 'Your Restaurant'
+
+    # Get the page number from the URL, default to 1 if not provided
+    page = request.args.get('page', 1, type=int)
+    orders_per_page = 5
+    offset = (page - 1) * orders_per_page
+
+    # Count new orders
+    cursor.execute("""
+        SELECT COUNT(*) AS new_order_count
+        FROM orderrequest
+        WHERE R_name = %s AND Order_R_Status = 'new'
+    """, (restaurant_name,))
+    order_count_result = cursor.fetchone()
+    new_order_count = order_count_result['new_order_count'] if order_count_result else 0
+
+    cursor.execute("""
+        SELECT o.Order_ID, o.C_Name, ord.Item, ord.Quantity, ord.Price, o.Timestamp ,o.Order_R_Status
+        FROM orderrequest o
+        JOIN `order` ord ON o.Order_ID = ord.Order_ID
+        WHERE o.R_name = %s AND o.Order_R_Status = 'new'
+        LIMIT %s OFFSET %s
+    """, (restaurant_name, orders_per_page, offset))
+
+    rows= cursor.fetchall()
+
+    has_next=len(rows)
+    rows=rows[:orders_per_page]
+    cursor.close()
+    conn.close()
+
+    # Group by Order_ID and calculate total price
+    grouped_orders = defaultdict(lambda: {'items': [], 'total_price': 0, 'C_Name': '', 'Timestamp': '', 'Order_R_Status': '', 'Order_ID': ''})
+
+    for row in rows:
+        order_id = row['Order_ID']
+        total_item_price = row['Quantity'] * row['Price']  # Calculate total price for this item
+
+        # Add/Append order details for this order
+        grouped_orders[order_id]['Order_ID'] = row['Order_ID']
+        grouped_orders[order_id]['C_Name'] = row['C_Name']
+        grouped_orders[order_id]['Timestamp'] = row['Timestamp']
+        grouped_orders[order_id]['Order_R_Status'] = row['Order_R_Status']
+        
+        # Add items for this order
+        grouped_orders[order_id]['items'].append({
+            'Item': row['Item'],
+            'Quantity': row['Quantity'],
+            'Price': row['Price'],
+            'Total_Item_Price': total_item_price  # Add the total price for this item
+        })
+
+        # Sum the total price for all items in the order
+        grouped_orders[order_id]['total_price'] += total_item_price
+
+    return render_template('business_dashboard.html', orders=grouped_orders, restaurant_name=restaurant_name, new_order_count=new_order_count, has_next=has_next, page=page)
+
+
+@app.route('/accept_order/<int:order_id>', methods=['POST'])
+def accept_order(order_id):
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+    conn = database_connect()
+    cursor = conn.cursor()
+
+    # Update the order status to 'accepted'
+    cursor.execute("""
+        UPDATE orderrequest SET Order_R_Status = 'accepted'
+        WHERE Order_ID = %s
+    """, (order_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    flash("Order accepted successfully!")
+    page=request.args.get('page',1,type=int)
+    return redirect(url_for('business_dashboard',page=page))
+
+@app.route('/reject_order/<int:order_id>', methods=['POST'])
+def reject_order(order_id):
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    source = request.form.get('source', 'dashboard')  # Default fallback
+
+    conn = database_connect()
+    cursor = conn.cursor()
+
+    # Update the order status to 'rejected'
+    cursor.execute("""
+        UPDATE orderrequest SET Order_R_Status = 'rejected'
+        WHERE Order_ID = %s
+    """, (order_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    flash("Order Rejected")
+
+    # Redirect based on where the reject came from
+    if source == 'new_orders':
+        return redirect(url_for('business_dashboard'))
+    elif source == 'accepted_orders':
+        return redirect(url_for('view_accepted_orders'))
+    else:
+        return redirect(url_for('business_dashboard'))
+
+@app.route('/mark_as_complete/<int:order_id>', methods=['POST'])
+def mark_as_complete(order_id):
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    # Connect to the database and update the order's status
+    conn = database_connect()
+    cursor = conn.cursor()
+
+    # Update the order's status to "completed"
+    cursor.execute("""
+        UPDATE orderrequest
+        SET Order_R_Status = 'fulfilled'
+        WHERE Order_ID = %s
+    """, (order_id,))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash('Order marked as complete!', 'success')
+    return redirect(url_for('view_accepted_orders'))
+
+@app.route('/new_orders')
+def view_new_orders():
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get restaurant name associated with the business user
+    cursor.execute("SELECT Restaurant_Name FROM restaurant WHERE User_ID = %s", (user_id,))
+    result = cursor.fetchone()
+    restaurant_name = result['Restaurant_Name'] if result else None
+
+    if not restaurant_name:
+        flash('No restaurant found for this user.', 'danger')
+        return redirect(url_for('business_dashboard'))
+
+    # Get new orders from orderrequest table
+    cursor.execute("""
+        SELECT ord.Order_ID, r.C_Name AS C_Name, ord.Item, ord.Quantity, ord.Price, ord.Timestamp,
+        r.C_Address, r.C_City, r.C_Zip
+        FROM orderrequest r
+        JOIN `order` ord ON ord.Order_ID = r.Order_ID
+        WHERE r.R_name = %s AND r.Order_R_Status = 'new'
+
+    """, (restaurant_name,))
+
+    orders = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('view_orders.html', orders=orders, restaurant_name=restaurant_name)
+
+@app.route('/accepted_orders')
+def view_accepted_orders():
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get restaurant name associated with the business user
+    cursor.execute("SELECT Restaurant_Name FROM restaurant WHERE User_ID = %s", (user_id,))
+    result = cursor.fetchone()
+    restaurant_name = result['Restaurant_Name'] if result else None
+
+    if not restaurant_name:
+        flash('No restaurant found for this user.', 'danger')
+        return redirect(url_for('business_dashboard'))
+
+    # Get accepted orders from orderrequest table
+    cursor.execute("""
+        SELECT o.Order_ID, o.C_Name, ord.Item, ord.Quantity, ord.Price, o.Timestamp,
+            o.C_Address, o.C_City, o.C_Zip
+        FROM orderrequest o
+        JOIN `order` ord ON ord.Order_ID = o.Order_ID
+        LEFT JOIN restaurant r ON o.R_name = r.Restaurant_Name
+        WHERE o.R_name = %s AND o.Order_R_Status = 'accepted'
+    """, (restaurant_name,))
+
+    orders = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('accepted_orders.html', orders=orders, restaurant_name=restaurant_name)
+
+@app.route('/edit_account', methods=['GET', 'POST'])
+def edit_account():
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Fetch current restaurant details (address, hours, etc.)
+    cursor.execute("""
+        SELECT r.Restaurant_Name, r.Restaurant_Address, a.Day_of_Week, a.Start_Time, a.End_Time
+        FROM restaurant r
+        LEFT JOIN availability a ON r.User_ID = a.User_ID
+        WHERE r.User_ID = %s
+    """, (user_id,))
+    
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Handle GET request - show current account details in form
+    if request.method == 'GET':
+        # Make sure the result isn't empty, and pass it to the template
+        if result:
+            restaurant_info = result[0]  # Assuming only one row for the restaurant
+        else:
+            restaurant_info = {}
+
+        return render_template('edit_account.html', restaurant_info=restaurant_info)
+
+    # Handle POST request - update the account details
+    if request.method == 'POST':
+        # Get the new data from the form
+        new_address = request.form.get('address')
+        new_hours = request.form.get('hours')
+
+        # Update the restaurant's details
+        conn = database_connect()
+        cursor = conn.cursor()
+
+        # Update address
+        if new_address:
+            cursor.execute("""
+                UPDATE restaurant 
+                SET Restaurant_Address = %s 
+                WHERE User_ID = %s
+            """, (new_address, user_id))
+
+        # Update hours
+        if new_hours:
+            cursor.execute("""
+                UPDATE availability 
+                SET Day_of_Week = %s, Start_Time = %s, End_Time = %s 
+                WHERE User_ID = %s
+            """, (new_hours['day'], new_hours['start_time'], new_hours['end_time'], user_id))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        flash('Account updated successfully!', 'success')
+        return redirect(url_for('edit_account'))
+
+@app.route('/past_orders')
+def past_orders():
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    user_id = session.get('user_id')
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Retrieve the restaurant's name
+    cursor.execute("SELECT Restaurant_Name FROM restaurant WHERE User_ID = %s", (user_id,))
+    result = cursor.fetchone()
+    restaurant_name = result['Restaurant_Name'] if result else 'Your Restaurant'
+
+    # Query for past orders (orders that have been completed or rejected)
+    query = """
+    SELECT 
+        orr.Order_ID, 
+        orr.C_Name, 
+        ord.Item, 
+        ord.Quantity, 
+        ord.Price, 
+        orr.Timestamp,
+        orr.Reject_Reason
+    FROM orderrequest orr
+    JOIN `order` ord ON orr.Order_ID = ord.Order_ID
+    WHERE orr.R_name = %s AND orr.Order_R_Status IN ('fulfilled', 'rejected','')
+    """
+
+    cursor.execute(query, (restaurant_name,))
+    orders = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('past_orders.html', orders=orders, restaurant_name=restaurant_name)
+
+@app.route('/order_details/<int:order_id>')
+def order_details(order_id):
+    if 'user' not in session or session.get('user_type') != 'business':
+        return redirect(url_for('login'))
+
+    conn = database_connect()
+    cursor = conn.cursor(dictionary=True)
+
+    # Fetch order details by Order_ID
+    cursor.execute("""
+    SELECT o.Order_ID, o.Timestamp, o.Order_R_Status, o.Reject_Reason,
+    d.Item, d.Quantity, d.Price,
+    r.C_Address, r.C_City, r.C_Zip
+    FROM orderrequest o
+    JOIN `order` d ON o.Order_ID = d.Order_ID
+    LEFT JOIN restaurant r ON o.R_name = r.Restaurant_Name
+    WHERE o.Order_ID = %s
+
+    """, (order_id,))
+    
+    order_details = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+
+    if order_details:
+        return render_template('order_details.html', order=order_details)
+    else:
+        flash("Order not found.", "danger")
+        return redirect(url_for('view_new_orders'))
 
 @app.route('/logout')
 def logout():
