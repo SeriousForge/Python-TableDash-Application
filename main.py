@@ -101,16 +101,16 @@ def business_dashboard():
     cursor.execute("""
         SELECT COUNT(*) AS new_order_count
         FROM orderrequest
-        WHERE R_name = %s AND Order_Status = 'new'
+        WHERE R_name = %s AND Order_R_Status = 'new'
     """, (restaurant_name,))
     order_count_result = cursor.fetchone()
     new_order_count = order_count_result['new_order_count'] if order_count_result else 0
 
     cursor.execute("""
-        SELECT o.Order_ID, o.C_Name, ord.Item, ord.Quantity, ord.Price, o.Timestamp ,o.Order_Status
+        SELECT o.Order_ID, o.C_Name, ord.Item, ord.Quantity, ord.Price, o.Timestamp ,o.Order_R_Status
         FROM orderrequest o
         JOIN `order` ord ON o.Order_ID = ord.Order_ID
-        WHERE o.R_name = %s AND o.Order_Status = 'new'
+        WHERE o.R_name = %s AND o.Order_R_Status = 'new'
         LIMIT %s OFFSET %s
     """, (restaurant_name, orders_per_page, offset))
 
@@ -122,24 +122,30 @@ def business_dashboard():
     conn.close()
 
     # Group by Order_ID and calculate total price
-    grouped_orders = defaultdict(lambda: {'items': [], 'total_price': 0})
+    grouped_orders = defaultdict(lambda: {'items': [], 'total_price': 0, 'C_Name': '', 'Timestamp': '', 'Order_R_Status': '', 'Order_ID': ''})
 
     for row in rows:
         order_id = row['Order_ID']
         total_item_price = row['Quantity'] * row['Price']  # Calculate total price for this item
-        grouped_orders[order_id]['Order_ID']=row['Order_ID']
+
+        # Add/Append order details for this order
+        grouped_orders[order_id]['Order_ID'] = row['Order_ID']
         grouped_orders[order_id]['C_Name'] = row['C_Name']
         grouped_orders[order_id]['Timestamp'] = row['Timestamp']
-        grouped_orders[order_id]['Order_Status'] = row['Order_Status']
+        grouped_orders[order_id]['Order_R_Status'] = row['Order_R_Status']
+        
+        # Add items for this order
         grouped_orders[order_id]['items'].append({
             'Item': row['Item'],
             'Quantity': row['Quantity'],
             'Price': row['Price'],
             'Total_Item_Price': total_item_price  # Add the total price for this item
         })
-        grouped_orders[order_id]['total_price'] += total_item_price  # Sum the total price for all items in the order
 
-    return render_template('business_dashboard.html', orders=grouped_orders, restaurant_name=restaurant_name,new_order_count=new_order_count,has_next=has_next,page=page)
+        # Sum the total price for all items in the order
+        grouped_orders[order_id]['total_price'] += total_item_price
+
+    return render_template('business_dashboard.html', orders=grouped_orders, restaurant_name=restaurant_name, new_order_count=new_order_count, has_next=has_next, page=page)
 
 
 @app.route('/accept_order/<int:order_id>', methods=['POST'])
@@ -153,7 +159,7 @@ def accept_order(order_id):
 
     # Update the order status to 'accepted'
     cursor.execute("""
-        UPDATE orderrequest SET Order_Status = 'accepted'
+        UPDATE orderrequest SET Order_R_Status = 'accepted'
         WHERE Order_ID = %s
     """, (order_id,))
     conn.commit()
@@ -177,7 +183,7 @@ def reject_order(order_id):
 
     # Update the order status to 'rejected'
     cursor.execute("""
-        UPDATE orderrequest SET Order_Status = 'rejected'
+        UPDATE orderrequest SET Order_R_Status = 'rejected'
         WHERE Order_ID = %s
     """, (order_id,))
     conn.commit()
@@ -189,7 +195,7 @@ def reject_order(order_id):
 
     # Redirect based on where the reject came from
     if source == 'new_orders':
-        return redirect(url_for('new_order_requests'))
+        return redirect(url_for('business_dashboard'))
     elif source == 'accepted_orders':
         return redirect(url_for('view_accepted_orders'))
     else:
@@ -207,7 +213,7 @@ def mark_as_complete(order_id):
     # Update the order's status to "completed"
     cursor.execute("""
         UPDATE orderrequest
-        SET Order_Status = 'completed'
+        SET Order_R_Status = 'fulfilled'
         WHERE Order_ID = %s
     """, (order_id,))
     
@@ -243,7 +249,7 @@ def view_new_orders():
         r.C_Address, r.C_City, r.C_Zip
         FROM orderrequest r
         JOIN `order` ord ON ord.Order_ID = r.Order_ID
-        WHERE r.R_name = %s AND r.Order_Status = 'new'
+        WHERE r.R_name = %s AND r.Order_R_Status = 'new'
 
     """, (restaurant_name,))
 
@@ -279,7 +285,7 @@ def view_accepted_orders():
         FROM orderrequest o
         JOIN `order` ord ON ord.Order_ID = o.Order_ID
         LEFT JOIN restaurant r ON o.R_name = r.Restaurant_Name
-        WHERE o.R_name = %s AND o.Order_Status = 'accepted'
+        WHERE o.R_name = %s AND o.Order_R_Status = 'accepted'
     """, (restaurant_name,))
 
     orders = cursor.fetchall()
@@ -379,7 +385,7 @@ def past_orders():
         orr.Reject_Reason
     FROM orderrequest orr
     JOIN `order` ord ON orr.Order_ID = ord.Order_ID
-    WHERE orr.R_name = %s AND orr.Order_Status IN ('completed', 'rejected')
+    WHERE orr.R_name = %s AND orr.Order_R_Status IN ('fulfilled', 'rejected','')
     """
 
     cursor.execute(query, (restaurant_name,))
@@ -400,7 +406,7 @@ def order_details(order_id):
 
     # Fetch order details by Order_ID
     cursor.execute("""
-    SELECT o.Order_ID, o.Timestamp, o.Order_Status, o.Reject_Reason,
+    SELECT o.Order_ID, o.Timestamp, o.Order_R_Status, o.Reject_Reason,
     d.Item, d.Quantity, d.Price,
     r.C_Address, r.C_City, r.C_Zip
     FROM orderrequest o

@@ -19,18 +19,6 @@
     <h1>Welcome, {{ restaurant_name }}!</h1>
     <h2>You have {{ new_order_count }} new order{{ '' if new_order_count == 1 else 's' }}.</h2>
 
-
-    <!-- Flash message block BELOW nav and headings -->
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <div class="flash-message flash-success">
-                {% for message in messages %}
-                    <p>{{ message }}</p>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
-
     <h2>New Orders</h2>
 
 <!-- Display the orders -->
