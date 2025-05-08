@@ -1,19 +1,16 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import mysql.connector
 import random
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
 
 DATABASE_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "",
-    "database": "TableDash"
     "host": "localhost",      # XAMPP uses localhost for MySQL
     "user": "root",           # Default MySQL username for XAMPP
     "password": "",           # Default password is empty for XAMPP
