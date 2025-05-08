@@ -1,29 +1,883 @@
 <!DOCTYPE html>
 <html>
-<head><title>Driver Dashboard</title></head>
+
+<head>
+    <title>Driver Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html,
+        body {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #fafafa;
+        }
+
+        body {
+            min-height: 100vh;
+            min-width: 100vw;
+            box-sizing: border-box;
+        }
+
+        #container {
+            min-height: 100vh;
+            min-width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 24px 32px 8px 32px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            background: white;
+            padding-left: 32px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: black;
+            text-decoration: none;
+            font-weight: bold;
+            border-bottom: 3px solid transparent;
+            margin-right: 10px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .tab.active {
+            color: #E23724;
+            border-bottom: 3px solid #E23724;
+        }
+
+        main {
+            flex: 1;
+            width: 100vw;
+            box-sizing: border-box;
+            padding: 40px 0 0 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .dashboard-content {
+            width: 100%;
+            max-width: 760px;
+            padding: 0 24px 60px 24px;
+            position: relative;
+        }
+
+        h1,
+        h2 {
+            margin-top: 0;
+        }
+
+        /* For the map */
+        #map {
+            height: 410px;
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto 20px auto;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px #ddd;
+        }
+
+        .btn-deliver {
+            display: block;
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto 32px auto;
+            background: #E23724;
+            color: #fff;
+            border: none;
+            padding: 16px 0;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            letter-spacing: 1px;
+        }
+
+        .btn-deliver:hover {
+            background: #c41e1d;
+        }
+
+        ul {
+            padding-left: 24px;
+        }
+
+        @media (max-width: 900px) {
+
+            #map,
+            .btn-deliver,
+            .dashboard-content {
+                max-width: 100vw !important;
+            }
+        }
+
+        @media (max-width: 650px) {
+
+            header,
+            .tabs,
+            .dashboard-content {
+                padding-left: 6vw;
+                padding-right: 6vw;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #map {
+                height: 220px;
+            }
+        }
+
+        .city-slot {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px #eee;
+            margin: 15px auto;
+            max-width: 350px;
+            padding: 14px 20px;
+            cursor: pointer;
+            font-size: 1.07em;
+            text-align: center;
+            transition: box-shadow 0.17s;
+        }
+
+        .city-slot:hover {
+            box-shadow: 0 4px 16px #bbb;
+            background: #f2f2f2;
+        }
+    </style>
+    <!-- Leaflet CSS for map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+
 <body>
-    <h1>Welcome, {{ email }} (Driver)</h1>
-    <a href="{{ url_for('logout') }}">Logout</a>
-    {% if driver %}
-        <h2>Your Driver Profile:</h2>
-        <ul>
-            <li>Name: {{ driver.Driver_Name }}</li>
-            <li>Address: {{ driver.Driver_Address }}</li>
-            <li>Vehicle: {{ driver.Vehicle }}</li>
-            <li>Make: {{ driver.Make }}</li>
-            <li>Color: {{ driver.Vehicle_Color }}</li>
-            <li>Model: {{ driver.Model }}</li>
-            <li>License #: {{ driver.License_Num }}</li>
-            <li>Driver Rating: {{ driver.Driver_Rating }}</li>
-            <li>Overall Rating: {{ driver.Overall_Rating }}</li>
-            <li>Timeliness: {{ driver.Timeliness }}</li>
-            <li>Friendliness: {{ driver.Friendliness }}</li>
-            <li>Accuracy: {{ driver.Accuracy }}</li>
-            <li>Range: {{ driver.Driver_Range }}</li>
-            <li>Tips: ${{ driver.Driver_Tips }}</li>
-        </ul>
-    {% else %}
-        <p>No driver profile found for your account.</p>
-    {% endif %}
+    <div id="container">
+        <header>
+            <h1 style="margin:0;">Welcome, {{ driver.Driver_Name }} (Driver)</h1>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </header>
+        <div class="tabs">
+            <a href="{{ url_for('driver_dashboard', tab='delivery') }}"
+                class="tab {% if active_tab == 'delivery' %}active{% endif %}">Delivery</a>
+            <a href="{{ url_for('driver_dashboard', tab='schedule') }}"
+                class="tab {% if active_tab == 'schedule' %}active{% endif %}">Schedule</a>
+            <a href="{{ url_for('driver_dashboard', tab='account') }}"
+                class="tab {% if active_tab == 'account' %}active{% endif %}">Account</a>
+            <a href="{{ url_for('driver_dashboard', tab='rating') }}"
+                class="tab {% if active_tab == 'rating' %}active{% endif %}">Rating</a>
+            <a href="{{ url_for('driver_dashboard', tab='earnings') }}"
+                class="tab {% if active_tab == 'earnings' %}active{% endif %}">Earnings</a>
+        </div>
+        <main>
+            <div class="dashboard-content">
+                {% if active_tab == 'delivery' %}
+                <h2>Delivery</h2>
+                <p>This is the Delivery tab (default).</p>
+
+                <!-- Map for current driver location -->
+                <div id="map"></div>
+
+                {% if ongoing_delivery %}
+                <button class="btn-deliver" onclick="window.location.href='{{ url_for('deliver_page') }}'">Return to
+                    Delivery</button>
+                {% else %}
+                <button class="btn-deliver" onclick="window.location.href='{{ url_for('start_delivery') }}'">Deliver
+                    Now</button>
+                {% endif %}
+
+                <!-- Leaflet JS for map -->
+                <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+                <script>
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(showPosition, showError);
+                    } else {
+                        document.getElementById("map").innerHTML = "Geolocation is not supported by this browser.";
+                    }
+
+                    function showPosition(position) {
+                        var lat = position.coords.latitude;
+                        var lon = position.coords.longitude;
+                        var map = L.map('map').setView([lat, lon], 13);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '© OpenStreetMap'
+                        }).addTo(map);
+                        L.marker([lat, lon]).addTo(map)
+                            .bindPopup("You are here").openPopup();
+                    }
+
+                    function showError(error) {
+                        let msg;
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                msg = "User denied the request for Geolocation.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                msg = "Location information is unavailable.";
+                                break;
+                            case error.TIMEOUT:
+                                msg = "The request to get user location timed out.";
+                                break;
+                            default:
+                                msg = "An unknown error occurred.";
+                                break;
+                        }
+                        document.getElementById("map").innerHTML = msg;
+                    }
+                </script>
+                {% elif active_tab == 'schedule' %}
+                <h2>Schedule</h2>
+                <script>
+                    function sendLocationToServer(lat, lon) {
+                        fetch("/nearby_cities", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ lat: lat, lon: lon })
+                        })
+                            .then(r => r.text())
+                            .then(html => {
+                                document.getElementById("city-list").innerHTML = html;
+                            });
+                    }
+
+                    window.addEventListener("DOMContentLoaded", function () {
+                        if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(function (pos) {
+                                sendLocationToServer(pos.coords.latitude, pos.coords.longitude);
+                            });
+                        } else {
+                            document.getElementById("city-list").innerHTML = "<div>Geolocation not enabled.</div>";
+                        }
+                    });
+                </script>
+                <!-- Weekday short names row -->
+                <div class="weekday-labels">
+                    {% for day in week_dates %}
+                    <div class="weekday-label">{{ day.short }}</div>
+                    {% endfor %}
+                </div>
+                <!-- Day of month in circles -->
+                <div class="weekday-circles">
+                    {% for day in week_dates %}
+                    <a href="{{ url_for('driver_dashboard', tab='schedule', selected_idx=loop.index0) }}"
+                        class="weekday-circle {% if loop.index0 == selected_idx|int %}active{% endif %}">
+                        {{ day.date }}
+                    </a>
+                    {% endfor %}
+                </div>
+                <!-- Scheduled Button -->
+                <!-- Under weekday circles (and labels), before city-list: -->
+                <div style="display: flex; justify-content: center; margin-bottom: 18px;">
+                    <button id="scheduled-btn" class="scheduled-btn">Scheduled</button>
+                </div>
+                <div id="scheduled-panel" class="scheduled-overlay">
+                    <button id="close-scheduled"
+                        style="position:absolute;top:17px;right:18px;font-size:1.5em;color:#aaa;background:none;border:none;cursor:pointer;">×</button>
+                    <div id="scheduled-list" style="margin-top:0px;"></div>
+                </div>
+                <!-- Scheduled Panel (hidden by default) -->
+
+                <style>
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100vw);
+                        }
+
+                        to {
+                            transform: translateX(0);
+                        }
+                    }
+
+                    .scheduled-slot {
+                        background: #fff;
+                        border-radius: 7px;
+                        box-shadow: 0 2px 12px #e2e2e2;
+                        margin: 17px auto 0 auto;
+                        max-width: 320px;
+                        padding: 13px 19px;
+                        font-size: 1.12em;
+                        text-align: center;
+                        color: #222;
+                        position: relative;
+                    }
+
+                    #scheduled-btn.red {
+                        background: #E23724;
+                        color: #fff;
+                        border: 2px solid #E23724;
+                    }
+                </style>
+                <div id="city-list">
+                    Loading nearby cities...
+                </div>
+                <!-- Modal for setting delivery time -->
+                <div id="slotModal" class="modal" style="display:none;">
+                    <div class="modal-content">
+                        <button type="button" onclick="document.getElementById('slotModal').style.display='none'"
+                            style="position:absolute;top:16px;right:18px;font-size:1.8em;color:#aaa;background:none;border:none;cursor:pointer;line-height:1;z-index:2;">×</button>
+                        <div id="modal-date" style="text-align:center;font-size:1.2em;font-weight:bold;"></div>
+                        <div id="modal-city" style="text-align:center;font-size:1.1em;margin-bottom:15px;"></div>
+                        <form id="slotForm" method="POST" action="{{ url_for('save_availability') }}">
+                            <input type="hidden" name="city" id="input-city">
+                            <input type="hidden" name="dateiso" id="input-dateiso">
+                            <input type="hidden" name="day_of_week" id="input-dayofweek">
+                            <label>Start Time:<br><input type="time" name="start_time" required></label><br><br>
+                            <label>End Time:<br><input type="time" name="end_time" required></label><br><br>
+                            <button type="submit"
+                                style="width:100%;background:#E23724;color:#fff;padding:14px 0;margin-top:16px;border:none;border-radius:6px;font-weight:bold;font-size:1.1em;">Save
+                                Delivery Time</button>
+                        </form>
+                    </div>
+                </div>
+                <!-- Success/Error message -->
+                <div id="flash-message" class="flash-message" style="display:none;"></div>
+                <style>
+                    .weekday-labels {
+                        display: flex;
+                        justify-content: center;
+                        gap: 22px;
+                        margin: 0 0 3px 0;
+                    }
+
+                    .weekday-label {
+                        width: 48px;
+                        text-align: center;
+                        font-weight: bold;
+                        font-size: 1.02em;
+                        color: #333;
+                    }
+
+                    .weekday-circles {
+                        display: flex;
+                        justify-content: center;
+                        gap: 18px;
+                        margin: 0 0 35px 0;
+                    }
+
+                    .weekday-circle {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 48px;
+                        height: 48px;
+                        border-radius: 50%;
+                        background: #f5f5f5;
+                        font-weight: bold;
+                        color: #333;
+                        text-decoration: none;
+                        font-size: 1.08em;
+                        border: 2.5px solid transparent;
+                        transition: color 0.15s, border 0.15s, background 0.15s;
+                        box-shadow: 0 1px 4px #ecdcdc52;
+                        user-select: none;
+                    }
+
+                    .weekday-circle.active {
+                        background: #E23724;
+                        color: #fff;
+                        border: 2.5px solid #E23724;
+                    }
+
+                    .weekday-circle:hover:not(.active) {
+                        border: 2.5px solid #E23724;
+                        color: #E23724;
+                        background: #fff;
+                    }
+
+                    .modal {
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                        top: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.18);
+                        display: none;
+                        justify-content: center;
+                        /* centers horizontally */
+                        align-items: center;
+                        /* centers vertically */
+                        z-index: 2000;
+                    }
+
+                    .modal-content {
+                        background: #fff;
+                        padding: 28px 18px 24px 18px;
+                        border-radius: 22px;
+                        width: 100%;
+                        max-width: 385px;
+                        margin: 0 auto;
+                        /* for extra safety */
+                        box-shadow: 0 6px 24px #8884;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        animation: fadeInCenter 0.23s cubic-bezier(.86, 0, .07, 1);
+                    }
+
+                    @keyframes fadeInCenter {
+                        0% {
+                            transform: scale(0.92) translateY(30px);
+                            opacity: 0;
+                        }
+
+                        100% {
+                            transform: scale(1) translateY(0);
+                            opacity: 1;
+                        }
+                    }
+
+                    #scheduled-panel {
+                        /* no box-shadow here */
+                        background: #fafafa;
+                        border-radius: 18px;
+                        width: 400px;
+                        max-width: 98vw;
+                        position: absolute;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        top: 200px;
+                        /* adjusts the vertical offset - tweak as needed */
+                        z-index: 2102;
+                        padding: 24px 14px 18px 14px;
+                        overflow-y: auto;
+                        display: none;
+                    }
+
+                    .scheduled-slot {
+                        background: #fff;
+                        border-radius: 7px;
+                        /* removed box-shadow */
+                        margin: 0 auto 0 auto;
+                        max-width: 320px;
+                        padding: 13px 19px;
+                        font-size: 1.12em;
+                        text-align: center;
+                        color: #222;
+                        position: relative;
+                    }
+
+                    .scheduled-btn {
+                        background: #fff;
+                        border: 2px solid #E23724;
+                        color: #E23724;
+                        font-weight: bold;
+                        border-radius: 22px;
+                        padding: 8px 26px;
+                        font-size: 1.06em;
+                        outline: none;
+                        transition: background 0.16s, color 0.16s;
+                        cursor: pointer;
+                    }
+
+                    .scheduled-btn.active {
+                        background: #E23724;
+                        color: #fff;
+                        border: 2px solid #E23724;
+                    }
+
+                    /* No box-shadow on the slots either */
+
+                    .scheduled-overlay {
+                        display: none;
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: #fafafa;
+                        z-index: 2222;
+                        padding-top: 56px;
+                        /* room for the button and some margin */
+                        overflow-y: auto;
+                        box-shadow: none;
+                        /* No shadow */
+                    }
+
+                    .flash-message {
+                        position: fixed;
+                        top: 25px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        padding: 16px 26px;
+                        border-radius: 18px;
+                        background: #2dbe60;
+                        color: #fff;
+                        font-weight: 500;
+                        box-shadow: 0 4px 20px #2dbe6055;
+                        z-index: 2100;
+                        font-size: 1.1rem;
+                        opacity: 0.96;
+                        display: none;
+                        transition: opacity 0.25s;
+                    }
+
+                    .flash-message.error {
+                        background: #e74c3c;
+                        box-shadow: 0 4px 20px #e74c3c55;
+                    }
+                </style>
+                {% elif active_tab == 'account' %}
+                <h2>Account</h2>
+
+                <!-- Display Account Details -->
+                <div id="account-display">
+                    <ul>
+                        <li><b>Name:</b> {{ driver.Driver_Name }}</li>
+                        <li><b>Street Address:</b> {{ address.Street_Address }}</li>
+                        <li><b>Suite Number:</b> {{ address.Suite_Number or 'N/A' }}</li>
+                        <li><b>Gate Number:</b> {{ address.Gate_Number or 'N/A' }}</li>
+                        <li><b>City:</b> {{ address.City }}</li>
+                        <li><b>State:</b> {{ address.State }}</li>
+                        <li><b>ZIP Code:</b> {{ address.ZIP_Code }}</li>
+
+                        <li><b>Vehicle:</b> {{ driver.Vehicle }}</li>
+                        <li><b>Make:</b> {{ driver.Make }}</li>
+                        <li><b>Model:</b> {{ driver.Model }}</li>
+                        <li><b>Vehicle Color:</b> {{ driver.Vehicle_Color }}</li>
+                    </ul>
+                    <button id="edit-btn" class="btn">Update Account</button>
+                </div>
+
+                <!-- Edit Form -->
+                <div id="account-edit" style="display:none;">
+                    <form id="updateAccountForm">
+                        <ul>
+                            <li><b>Name:</b> <input type="text" name="name" value="{{ driver.Driver_Name }}" required>
+                            </li>
+                            <li><b>Street Address:</b> <input type="text" name="street_address"
+                                    value="{{ address.Street_Address }}" required></li>
+                            <li><b>Suite Number:</b> <input type="text" name="suite_number"
+                                    value="{{ address.Suite_Number }}"></li>
+                            <li><b>Gate Number:</b> <input type="text" name="gate_number"
+                                    value="{{ address.Gate_Number }}"></li>
+                            <li><b>City:</b> <input type="text" name="city" value="{{ address.City }}" required></li>
+                            <li><b>State:</b> <input type="text" name="state" value="{{ address.State }}" required></li>
+                            <li><b>ZIP Code:</b> <input type="text" name="zip_code" value="{{ address.ZIP_Code }}"
+                                    required></li>
+
+                            <li><b>Vehicle:</b> <input type="text" name="vehicle" value="{{ driver.Vehicle }}" required>
+                            </li>
+                            <li><b>Make:</b> <input type="text" name="make" value="{{ driver.Make }}" required></li>
+                            <li><b>Model:</b> <input type="text" name="model" value="{{ driver.Model }}" required></li>
+                            <li><b>Vehicle Color:</b> <input type="text" name="vehicle_color"
+                                    value="{{ driver.Vehicle_Color }}" required></li>
+                        </ul>
+                        <button type="submit" class="btn">Update</button>
+                        <button type="button" id="cancel-btn" class="btn">Cancel</button>
+                    </form>
+                </div>
+
+                <style>
+                    /* Add styles for buttons and form inputs */
+                    .btn {
+                        background: #E23724;
+                        color: #fff;
+                        border: none;
+                        padding: 10px 20px;
+                        font-size: 1rem;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                        margin-top: 10px;
+                        display: inline-block;
+                    }
+
+                    .btn:hover {
+                        background: #c41e1d;
+                    }
+
+                    form ul {
+                        padding-left: 0;
+                        list-style-type: none;
+                    }
+
+                    form ul li {
+                        margin-bottom: 10px;
+                    }
+
+                    form input[type="text"] {
+                        width: calc(100% - 120px);
+                        max-width: 600px;
+                        padding: 6px;
+                        margin-left: 12px;
+                    }
+                </style>
+
+                <!-- JavaScript for toggling edit/view modes -->
+                <script>
+                    document.getElementById('edit-btn').addEventListener('click', function () {
+                        document.getElementById('account-display').style.display = 'none';
+                        document.getElementById('account-edit').style.display = 'block';
+                    });
+
+                    document.getElementById('cancel-btn').addEventListener('click', function () {
+                        document.getElementById('account-edit').style.display = 'none';
+                        document.getElementById('account-display').style.display = 'block';
+                    });
+
+                    document.getElementById('updateAccountForm').onsubmit = function (event) {
+                        event.preventDefault();
+                        const formData = new FormData(this);
+                        fetch('{{ url_for("update_account") }}', {
+                            method: 'POST',
+                            body: formData
+                        })
+                            .then(resp => resp.json())
+                            .then(res => {
+                                if (res.success) {
+                                    // Reload account tab to fetch updated data
+                                    fetch('{{ url_for("driver_dashboard", tab="account") }}')
+                                        .then(response => response.text())
+                                        .then(html => {
+                                            // Replace the account section content with updated data
+                                            const parser = new DOMParser();
+                                            const doc = parser.parseFromString(html, 'text/html');
+                                            const newAccountContent = doc.getElementById('account-display');
+                                            document.getElementById('account-display').innerHTML = newAccountContent.innerHTML;
+
+                                            document.getElementById('account-edit').style.display = 'none';
+                                            document.getElementById('account-display').style.display = 'block';
+
+                                            showFlash(res.message, '');
+                                        });
+                                } else {
+                                    showFlash(res.message, 'error');
+                                }
+                            }).catch(() => {
+                                showFlash('Failed to update account', 'error');
+                            });
+                    };
+
+                    // Flash message helper
+                    function showFlash(msg, cls) {
+                        let flash = document.getElementById('flash-message');
+                        flash.textContent = msg;
+                        flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
+                        flash.style.display = 'block';
+                        setTimeout(() => { flash.style.display = 'none'; }, 1800);
+                    }
+                </script>
+
+                <!-- Flash message styling -->
+                <style>
+                    .flash-message {
+                        position: fixed;
+                        top: 25px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        padding: 16px 26px;
+                        border-radius: 18px;
+                        background: #2dbe60;
+                        color: #fff;
+                        font-weight: 500;
+                        box-shadow: 0 4px 20px #2dbe6055;
+                        z-index: 2100;
+                        font-size: 1.1rem;
+                        opacity: 0.96;
+                        display: none;
+                        transition: opacity 0.25s;
+                    }
+
+                    .flash-message.error {
+                        background: #e74c3c;
+                        box-shadow: 0 4px 20px #e74c3c55;
+                    }
+                </style>
+                {% elif active_tab == 'rating' %}
+                <h2>Rating</h2>
+                <div class="rating-container">
+                    <div class="rating-card">
+                        <span class="rating-label">Driver Rating:</span>
+                        <span class="rating-value">{{ driver.Driver_Rating }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Overall Rating:</span>
+                        <span class="rating-value">{{ driver.Overall_Rating }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Timeliness:</span>
+                        <span class="rating-value">{{ driver.Timeliness }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Friendliness:</span>
+                        <span class="rating-value">{{ driver.Friendliness }}</span>
+                    </div>
+                    <div class="rating-card">
+                        <span class="rating-label">Accuracy:</span>
+                        <span class="rating-value">{{ driver.Accuracy }}</span>
+                    </div>
+                </div>
+                <style>
+                    .rating-container {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        background: #fff;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                        padding: 20px;
+                        margin: 20px 0;
+                        width: 100%;
+                        max-width: 600px;
+                    }
+
+                    .rating-card {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: #fafafa;
+                        border-radius: 6px;
+                        border: 1px solid #ddd;
+                        width: 100%;
+                        padding: 12px 16px;
+                        margin: 8px 0;
+                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                    }
+
+                    .rating-label {
+                        font-weight: bold;
+                        color: #333;
+                    }
+
+                    .rating-value {
+                        font-size: 1.2em;
+                        color: #E23724;
+                        font-weight: bold;
+                    }
+                </style>
+                {% elif active_tab == 'earnings' %}
+                <h2>Earnings</h2>
+                <p><strong>Total Earnings:</strong> ${{ total_earnings }}</p>
+                <ul>
+                    {% for record in earnings_records %}
+                    <li>{{ record.Customer_Name }} - {{ record.Restaurant_Name }}: ${{ record.Driver_Fee +
+                        record.Driver_Tip }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+    <script>
+        const weekDates = JSON.parse('{{ week_dates|tojson | safe }}');
+
+        // Modal open on .city-slot click
+        document.addEventListener('click', function (e) {
+            if (e.target.classList.contains('city-slot')) {
+                // Find the selected .weekday-circle and its index (so we know what day)
+                const selected = document.querySelector('.weekday-circle.active');
+                let selectedIdx = Array.from(selected.parentElement.children).indexOf(selected);
+                const thisDay = weekDates[selectedIdx];
+
+                // Fill modal fields/labels
+                document.getElementById('modal-date').textContent = `${thisDay.month} ${thisDay.date}`;
+                document.getElementById('modal-city').textContent = e.target.getAttribute('data-city');
+                document.getElementById('input-city').value = e.target.getAttribute('data-city');
+                document.getElementById('input-dateiso').value = thisDay.iso;
+                document.getElementById('input-dayofweek').value = thisDay.long;
+
+                document.getElementById('slotModal').style.display = 'flex';
+            }
+        });
+
+        const scheduledBtn = document.getElementById('scheduled-btn');
+        const scheduledPanel = document.getElementById('scheduled-panel');
+        const scheduledList = document.getElementById('scheduled-list');
+        const closeScheduled = document.getElementById('close-scheduled');
+
+        // Helper: Get current selected day index & week's ISO
+        function getSelectedDayIso() {
+            const active = document.querySelector('.weekday-circle.active');
+            const idx = Array.from(active.parentElement.children).indexOf(active);
+            return weekDates[idx].iso;
+        }
+
+        // Open/close logic
+        scheduledBtn.onclick = function () {
+            if (scheduledPanel.style.display === 'block') {
+                scheduledPanel.style.display = 'none';
+                scheduledBtn.classList.remove('active');
+                return;
+            }
+            scheduledPanel.style.display = 'block';
+            scheduledBtn.classList.add('active');
+            scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+            fetch('/user_scheduled_times', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dateiso: getSelectedDayIso() })
+            })
+                .then(r => r.text())
+                .then(html => scheduledList.innerHTML = html);
+        };
+
+        closeScheduled.onclick = function () {
+            scheduledPanel.style.display = 'none';
+            scheduledBtn.classList.remove('active');
+        };
+
+        // If user clicks day, reload list if panel is open
+        document.querySelectorAll('.weekday-circle').forEach((circle, i) => {
+            circle.addEventListener('click', function (e) {
+                setTimeout(() => {
+                    if (scheduledPanel.style.display === 'block') {
+                        scheduledList.innerHTML = "<div style='text-align:center;margin:26px 0;color:#777;'>Loading...</div>";
+                        fetch('/user_scheduled_times', {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dateiso: weekDates[i].iso })
+                        })
+                            .then(r => r.text())
+                            .then(html => scheduledList.innerHTML = html);
+                    }
+                }, 120);
+            });
+        });
+        // Hide modal when clicking outside modal-content
+        document.getElementById('slotModal').onclick = function (e) {
+            if (e.target === this) this.style.display = 'none';
+        };
+
+        // AJAX post for Save Delivery Time
+        document.getElementById('slotForm').onsubmit = function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('{{ url_for("save_availability") }}', {
+                method: 'POST',
+                body: formData
+            })
+                .then(resp => resp.json())
+                .then(res => {
+                    document.getElementById('slotModal').style.display = 'none';
+                    showFlash(res.message, res.success ? '' : 'error');
+                }).catch(() => {
+                    document.getElementById('slotModal').style.display = 'none';
+                    showFlash('Failed to Save', 'error');
+                });
+        };
+
+        // Flash message helper
+        function showFlash(msg, cls) {
+            let flash = document.getElementById('flash-message');
+            flash.textContent = msg;
+            flash.className = 'flash-message' + (cls ? ` ${cls}` : '');
+            flash.style.display = 'block';
+            setTimeout(() => { flash.style.display = 'none'; }, 1800);
+        }
+    </script>
 </body>
+
 </html>

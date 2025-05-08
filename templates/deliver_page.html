@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Deliver Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* Styles for the delivery page */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        #map {
+            width: 80%;
+            height: 50vh;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            margin: 20px 0 10px 0;
+        }
+
+        .settings-menu {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .settings-icon {
+            font-size: 2rem;
+            cursor: pointer;
+            margin-bottom: 10px;
+            background-color: #fff;
+            padding: 8px;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .settings-options {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            padding: 10px;
+        }
+
+        .settings-options.active {
+            display: flex;
+        }
+
+        .settings-options button {
+            padding: 10px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            background-color: #E23724;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 140px;
+        }
+
+        .settings-options button:hover {
+            background-color: #c41e1d;
+        }
+
+        #addressInputContainer {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        #addressInput {
+            padding: 8px;
+            width: 250px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #getDirectionsButton {
+            padding: 8px 16px;
+            margin-left: 8px;
+            border-radius: 4px;
+            border: none;
+            background-color: #E23724;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #getDirectionsButton:hover {
+            background-color: #c41e1d;
+        }
+
+        /* Common button style */
+        .button {
+            background-color: #E23724;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1em;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px;
+            transition: background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #c41e1d;
+        }
+
+        /* Styles for the offer and pickup display */
+        .offer-container, .pickup-container {
+            width: 80%;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .offer-container h2, .pickup-container h2 {
+            color: #E23724;
+        }
+
+        .offer-container p, .pickup-container p {
+            margin: 12px 0;
+            font-size: 1.1em;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <h1>Deliver Page</h1>
+    <div class="settings-menu">
+        <i class="fas fa-cog settings-icon" onclick="toggleSettings()"></i>
+        <div class="settings-options">
+            <button class="button" onclick="pauseDelivery()">Pause Delivery</button>
+            <button class="button" onclick="endDelivery()">End Delivery</button>
+            <button class="button" onclick="window.location.href='{{ url_for('driver_dashboard', tab='delivery') }}'">Return to Home</button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Offer Section -->
+    <div id="offer-section" class="offer-container">
+        <h2>Current Offer</h2>
+        <p><strong>Total Amount: $<span id="offer-amount"></span></strong>
+            <span class="tip-note">(includes tip)</span>
+        </p>
+        <p><strong>Pickup:</strong> <span id="pickup-location"></span></p>
+        <p><strong>Dropoff:</strong> <span id="dropoff-location"></span></p>
+        <button class="button" onclick="acceptOrder()">Accept</button>
+        <button class="button" onclick="declineOrder()">Decline</button>
+    </div>
+
+    <!-- Pickup Info Section -->
+    <div id="pickup-info" style="display: none;" class="pickup-container">
+        <!-- This will display pickup details after order acceptance -->
+    </div>
+
+    <script>
+        let map, currentMarker;
+    
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        } else {
+            alert("Geolocation is not supported by this browser.");
+        }
+    
+        function showPosition(position) {
+            map = L.map('map').setView([position.coords.latitude, position.coords.longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            currentMarker = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+                .bindPopup("Current Location").openPopup();
+    
+            // Fetch initial order offer after map is loaded
+            fetchOrderOffer();
+        }
+    
+        function showError(error) {
+            let msg;
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    msg = "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    msg = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    msg = "The request to get user location timed out.";
+                    break;
+                default:
+                    msg = "An unknown error occurred.";
+                    break;
+            }
+            alert(msg);
+        }
+    
+        function toggleSettings() {
+            const settings = document.querySelector('.settings-options');
+            settings.classList.toggle('active');
+        }
+    
+        function fetchOrderOffer() {
+            fetch('{{ url_for("order_offer") }}')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Order Offer Data:', data); // Useful for debugging
+                    if (data.success) {
+                        document.getElementById('offer-amount').textContent = data.total_offer_amount;
+                        document.getElementById('pickup-location').textContent = data.order.R_name;
+                        document.getElementById('dropoff-location').textContent =
+                            `${data.order.C_Address}, ${data.order.C_City}, ${data.order.C_Zip}`;
+    
+                        document.getElementById('offer-section').style.display = 'block';
+    
+                        window.currentOrder = data.order; // Store order data globally for later use
+                    } else {
+                        document.getElementById('offer-section').style.display = 'none';
+                        console.log('No order available:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching order offer:', error);
+                });
+        }
+    
+        function acceptOrder() {
+            // Hide the offer section
+            document.getElementById('offer-section').style.display = 'none';
+    
+            // Display pickup information
+            const order = window.currentOrder;
+            document.getElementById('pickup-info').innerHTML = `
+                <h2>Pickup Details</h2>
+                <p><strong>Restaurant:</strong> ${order.R_name}</p>
+                <p><strong>Address:</strong> ${order.R_Address}, ${order.R_City}</p>
+                <button class="button" onclick="arrivedAtStore()">Arrived at Store</button>
+            `;
+            document.getElementById('pickup-info').style.display = 'block';
+        }
+    
+        function arrivedAtStore() {
+    const orderId = window.currentOrder.Order_ID;
+
+    fetch('{{ url_for("fetch_order_details") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.orderDetails = data.order_details; // Store order details globally
+
+            let detailsHtml = `
+                <h2>Order Details</h2>
+                <p><strong>Restaurant:</strong> ${data.order_details[0].RestaurantName}</p>
+                <p><strong>Order for: </strong>${data.order_details[0].Customer_name}</p>
+                <h3>Items:</h3>
+                <ul>
+            `;
+
+            data.order_details.forEach(item => {
+                detailsHtml += `<li>${item.Item}, Quantity: ${item.Quantity}</li>`;
+            });
+
+            detailsHtml += `</ul><button class="button" onclick="pickupOrder(${orderId})">Pickup Order</button>`;
+
+            document.getElementById('pickup-info').innerHTML = detailsHtml;
+            document.getElementById('pickup-info').style.display = 'block';
+        } else {
+            console.error('Error fetching order details:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
+
+function pickupOrder(orderId) {
+    fetch('{{ url_for("update_order_status") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Order status updated to "Picked Up"');
+            const order = window.currentOrder;
+            document.getElementById('pickup-info').innerHTML = `
+                <h2>Delivery Details</h2>
+                <p><strong>Name:</strong> ${order.C_Name}</p>
+                <p><strong>Address:</strong> ${order.C_Address}</p>
+                <h3>Order Details from ${order.R_name}:</h3>
+                <ul>
+            `;
+
+            const orderDetails = window.orderDetails;
+            if (orderDetails) {
+                orderDetails.forEach(item => {
+                    document.getElementById('pickup-info').innerHTML += `<li>${item.Item}, Quantity: ${item.Quantity}</li>`;
+                });
+            }
+
+            <!-- Where you build the button in JavaScript -->
+document.getElementById('pickup-info').innerHTML += `
+    </ul><button class="button" onclick="completeDelivery(${orderId})">Finish Delivery</button>
+`;
+
+            document.getElementById('pickup-info').style.display = 'block';
+        } else {
+            console.error('Failed to update order status:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
+
+function completeDelivery(orderId) {
+    // Calculate total earnings for logging purposes, though not updating driver's table
+    const totalEarnings = window.currentOrder.Fees + window.currentOrder.Tip;
+
+    fetch('{{ url_for("complete_delivery") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Delivery completed successfully.');
+            // Clear info section after delivery completion
+            document.getElementById('pickup-info').style.display = 'none';
+            document.getElementById('pickup-info').innerHTML = '';
+
+            // Optionally wait a little before fetching the next offer
+            setTimeout(() => {
+                alert('Fetching a new delivery offer...');
+                fetchOrderOffer(); // Fetch new order offer immediately
+            }, 2000);
+        } else {
+            console.error('Failed to complete delivery:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('An error occurred:', error);
+    });
+}
+    
+        function declineOrder() {
+            alert('Order declined!');
+            document.getElementById('offer-section').style.display = 'none';
+    
+            fetch('{{ url_for("order_decline") }}', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: window.currentOrder.OrderR_ID })
+            })
+            .then(() => setTimeout(fetchOrderOffer, 5000)); // Try to fetch a new offer after 5 seconds
+        }
+    
+        function pauseDelivery() {
+            alert('Delivery paused!');
+        }
+    
+        function endDelivery() {
+            alert('Delivery ended!');
+            fetch('{{ url_for("end_delivery") }}', { method: 'POST' })
+                .then(() => {
+                    window.location.href = '{{ url_for("driver_dashboard") }}';
+                });
+        }
+    </script>
+</body>
+</html>
