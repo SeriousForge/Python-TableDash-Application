@@ -230,46 +230,56 @@ def order_offer():
     if 'user_id' not in session or session.get('user_type') != 'driver':
         return jsonify({'success': False, 'message': 'Unauthorized access'}), 401
 
-    declined_orders = session.get('declined_orders', [])
+    if 'order_index' not in session:
+        session['order_index'] = 0
+
+    if 'declined_orders' not in session:
+        session['declined_orders'] = []
+
+    declined_orders = set(session['declined_orders'])  # Use a set for faster lookup
 
     try:
         conn = database_connect()
         cursor = conn.cursor(dictionary=True)
 
-        # Fetch the latest order that's not rejected and not declined by this driver
+        # Fetch all available orders
         cursor.execute("""
-            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip, 
+            SELECT OrderR_ID, Order_ID, R_name, R_Address, R_City, R_Zip,
                    C_Name, C_Address, C_City, C_Zip, Fees, Tip
             FROM orderrequest
-            WHERE Order_R_Status != 'rejected' 
+            WHERE Order_R_Status != 'rejected'
               AND Order_D_Status = 'Waiting For Assignment'
-              AND OrderR_ID NOT IN (%s)
-            ORDER BY Timestamp ASC LIMIT 1
-        """, (','.join(['%s'] * len(declined_orders)), *declined_orders))
-        order = cursor.fetchone()
-
-        if order:
-            # Implement a temporary lock (e.g., 1-minute lock) by updating the order
-            cursor.execute("""
-                UPDATE orderrequest 
-                SET Order_D_Status = 'Being Viewed'
-                WHERE OrderR_ID = %s
-            """, (order['OrderR_ID'],))
-            conn.commit()
-
-            total_offer_amount = float(order['Fees'] + order['Tip'])
-            response = {
-                'success': True,
-                'order': order,
-                'total_offer_amount': total_offer_amount
-            }
-        else:
-            response = {'success': False, 'message': 'No orders available'}
-
+        """)
+        
+        orders = cursor.fetchall()
         cursor.close()
         conn.close()
 
-        return jsonify(response)
+        total_orders = len(orders)
+
+        # If no orders are available, return a failure message
+        if total_orders == 0:
+            return jsonify({'success': False, 'message': 'No orders available'})
+
+        # Find the next valid order after current index
+        for _ in range(total_orders):
+            current_idx = session['order_index'] % total_orders
+            current_order = orders[current_idx]
+
+            session['order_index'] = (session['order_index'] + 1) % total_orders  # Move to next order, wrap direction
+
+            if current_order['OrderR_ID'] not in declined_orders:
+                total_offer_amount = float(current_order['Fees'] + current_order['Tip'])
+                return jsonify({
+                    'success': True,
+                    'order': current_order,
+                    'total_offer_amount': total_offer_amount
+                })
+
+        # If all orders have been declined, reset the index and return a failure message
+        session['order_index'] = 0
+        session['declined_orders'].clear()
+        return jsonify({'success': False, 'message': 'All orders declined, restarting queue...'})
 
     except Exception as e:
         print("Failed to fetch order:", e)
