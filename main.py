@@ -5,18 +5,21 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
 from collections import defaultdict
-from werkzeug.security import generate_password_hash
+from urllib.parse import urlparse
+import os
+
+url = urlparse(os.environ.get('JAWSDB_URL'))
+
+DATABASE_CONFIG = {
+    "host": url.hostname,
+    "user": url.username,
+    "password": url.password,
+    "database": url.path[1:],  # Omit the leading '/'
+    "port": url.port or 3306
+}
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-
-
-DATABASE_CONFIG = {
-    "host": "localhost",      # XAMPP uses localhost for MySQL
-    "user": "root",           # Default MySQL username for XAMPP
-    "password": "",           # Default password is empty for XAMPP
-    "database": "TableDash"   # Name of the database you created/imported
-}
 
 def database_connect():
     return mysql.connector.connect(**DATABASE_CONFIG)
@@ -1423,4 +1426,4 @@ def thank_you():
     return render_template('thank_you.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
