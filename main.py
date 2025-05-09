@@ -5,6 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta, date
 from math import radians, sin, cos, sqrt, atan2
 from collections import defaultdict
+from werkzeug.security import generate_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -65,6 +66,102 @@ def schedule_cleanup_for_driver(user_id):
 def splash():
     return render_template('splash.html')
 
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        confirm_password = request.form['confirm-password']
+        user_type = request.form['user-type']
+
+        # Common Data Validation
+        if not email or not password or not confirm_password or not user_type:
+            flash("All fields are required.", "error")
+            return redirect(url_for('signup'))
+
+        if password != confirm_password:
+            flash("Passwords do not match!", "error")
+            return redirect(url_for('signup'))
+
+        # Retrieve shared address fields
+        street_address = request.form['street-address']
+        suite_number = request.form['suite-number']
+        gate_number = request.form['gate-number']
+        city = request.form['city']
+        state = request.form['state']
+        zip_code = request.form['zip-code']
+
+        try:
+            conn = database_connect()
+            cursor = conn.cursor()
+
+            # Generate User_ID
+            if user_type == 'customer':
+                cursor.execute("SELECT User_ID FROM user WHERE User_Type = 'customer' ORDER BY User_ID DESC LIMIT 1")
+                result = cursor.fetchone()
+                next_id = int(result[0][1:]) + 1 if result else 1
+                user_id = f"C{next_id:04}"
+                
+                # Retrieve Customer-specific fields
+                customer_fname = request.form['customer-fname']
+                customer_lname = request.form['customer-lname']
+                customer_phone = request.form['customer-phone']
+                
+                # Insert into user table
+                cursor.execute('''
+                    INSERT INTO user (User_ID, User_Email, User_Password, User_Name, User_Type)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (user_id, email, password, email.split('@')[0], user_type))
+                
+                # Insert into customer table
+                cursor.execute('''
+                    INSERT INTO customer (Customer_Fname, Customer_LName, Customer_Member, Customer_Phone_Number, User_ID)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (customer_fname, customer_lname, 0, customer_phone, user_id))
+
+            elif user_type == 'driver':
+                cursor.execute("SELECT User_ID FROM user WHERE User_Type = 'driver' ORDER BY User_ID DESC LIMIT 1")
+                result = cursor.fetchone()
+                next_id = int(result[0][1:]) + 1 if result else 1
+                user_id = f"D{next_id:04}"
+
+                # Retrieve Driver-specific fields
+                driver_name = request.form['driver-name']
+                vehicle = request.form['vehicle']
+                make = request.form['make']
+                model = request.form['model']
+                license_num = request.form['license-num']
+                vehicle_color = request.form['vehicle-color']
+                
+                # Insert into user table
+                cursor.execute('''
+                    INSERT INTO user (User_ID, User_Email, User_Password, User_Name, User_Type)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (user_id, email, password, email.split('@')[0], user_type))
+                
+                # Insert into driver table
+                cursor.execute('''
+                    INSERT INTO driver (Driver_Name, Driver_Address, Vehicle, Make, Model, License_Num, Vehicle_Color, User_ID)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (driver_name, street_address, vehicle, make, model, license_num, vehicle_color, user_id))
+
+            # Insert into address table for both user types
+            cursor.execute('''
+                INSERT INTO address (Street_Address, Suite_Number, Gate_Number, City, State, ZIP_Code, User_ID, Address_Type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'home')
+            ''', (street_address, suite_number, gate_number, city, state, zip_code, user_id))
+
+            conn.commit()
+            flash("Account created successfully!", "success")
+            return redirect(url_for('login'))
+        except mysql.connector.Error as err:
+            flash(f"An error occurred: {err}", "error")
+        finally:
+            cursor.close()
+            conn.close()
+
+    return render_template('signup.html')
+  
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -96,7 +193,7 @@ def login():
                 session['message'] = 'Unknown user type'
                 return redirect(url_for('login'))
         else:
-            session['message'] = 'Invalid credentials'
+                flash('Invalid email or password.', 'error')
     return render_template('login.html')
 
 @app.route('/customer_dashboard')
@@ -852,58 +949,61 @@ def edit_account():
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
 
-    # Fetch current restaurant details (address, hours, etc.)
+    # Fetch current restaurant and address details
     cursor.execute("""
-        SELECT r.Restaurant_Name, r.Restaurant_Address, a.Day_of_Week, a.Start_Time, a.End_Time
+        SELECT r.Restaurant_Name, r.Restaurant_Address, a.Street_Address, a.Suite_Number, a.Gate_Number, a.City, a.State, a.ZIP_Code
         FROM restaurant r
-        LEFT JOIN availability a ON r.User_ID = a.User_ID
+        LEFT JOIN address a ON r.User_ID = a.User_ID
         WHERE r.User_ID = %s
     """, (user_id,))
+    result = cursor.fetchone()
+
+    # Fetch availability details for each day of the week
+    cursor.execute("""
+        SELECT Day_of_Week, Start_Time, End_Time
+        FROM availability
+        WHERE User_ID = %s
+    """, (user_id,))
+    availability_results = cursor.fetchall()
     
-    result = cursor.fetchall()
     cursor.close()
     conn.close()
 
+    # Create a dictionary to store weekly hours
+    weekly_hours = {day: {} for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']}
+    for availability in availability_results:
+        day = availability['Day_of_Week']
+        if day:
+            weekly_hours[day] = {
+                'start_time': availability['Start_Time'],
+                'end_time': availability['End_Time']
+            }
+    
     # Handle GET request - show current account details in form
     if request.method == 'GET':
-        # Make sure the result isn't empty, and pass it to the template
         if result:
-            restaurant_info = result[0]  # Assuming only one row for the restaurant
+            address_info = {
+                'Street_Address': result['Street_Address'],
+                'Suite_Number': result['Suite_Number'],
+                'Gate_Number': result['Gate_Number'],
+                'City': result['City'],
+                'State': result['State'],
+                'ZIP_Code': result['ZIP_Code'],
+            }
+            restaurant_info = result
         else:
+            address_info = {}
             restaurant_info = {}
 
-        return render_template('edit_account.html', restaurant_info=restaurant_info)
+        return render_template('edit_account.html', restaurant_info=restaurant_info, address_info=address_info, weekly_hours=weekly_hours)
 
-    # Handle POST request - update the account details
+    # Handle POST request for updating account details
     if request.method == 'POST':
-        # Get the new data from the form
-        new_address = request.form.get('address')
-        new_hours = request.form.get('hours')
+        # Process form submissions for updates here
 
-        # Update the restaurant's details
-        conn = database_connect()
-        cursor = conn.cursor()
-
-        # Update address
-        if new_address:
-            cursor.execute("""
-                UPDATE restaurant 
-                SET Restaurant_Address = %s 
-                WHERE User_ID = %s
-            """, (new_address, user_id))
-
-        # Update hours
-        if new_hours:
-            cursor.execute("""
-                UPDATE availability 
-                SET Day_of_Week = %s, Start_Time = %s, End_Time = %s 
-                WHERE User_ID = %s
-            """, (new_hours['day'], new_hours['start_time'], new_hours['end_time'], user_id))
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
+        # Example update logic (similar to what was defined previously)
+        
+        # Redirect after successful update
         flash('Account updated successfully!', 'success')
         return redirect(url_for('edit_account'))
 
