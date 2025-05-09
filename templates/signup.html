@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login to TableDash</title>
+    <title>Sign Up for TableDash</title>
     <style>
         body {
             background: #f0f4f8;
@@ -13,28 +13,24 @@
             height: 100vh;
             margin: 0;
         }
-
-        .login-container {
+        .signup-container {
             background: white;
             padding: 40px;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             width: 300px;
         }
-
-        .login-container h1 {
+        .signup-container h1 {
             text-align: center;
             margin-bottom: 24px;
             color: #333;
         }
-
         label {
             display: block;
             margin-bottom: 6px;
             color: #555;
             font-weight: bold;
         }
-
         input[type="email"],
         input[type="password"] {
             width: 100%;
@@ -44,11 +40,18 @@
             border-radius: 6px;
             font-size: 14px;
         }
-
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
         button {
             width: 100%;
             padding: 10px;
-            background: #007bff;
+            background: #28a745;
             color: white;
             border: none;
             border-radius: 6px;
@@ -56,11 +59,9 @@
             cursor: pointer;
             transition: background 0.3s;
         }
-
         button:hover {
-            background: #0056b3;
+            background: #218838;
         }
-
         .footer {
             text-align: center;
             margin-top: 16px;
@@ -70,8 +71,8 @@
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <h1>Login to TableDash</h1>
+    <div class="signup-container">
+        <h1>Sign Up for TableDash</h1>
         <form method="POST">
             <label for="email">Email:</label>
             <input type="email" id="email" name="email" required>
@@ -79,11 +80,19 @@
             <label for="password">Password:</label>
             <input type="password" id="password" name="password" required>
 
-            <button type="submit">Login</button>
+            <label for="confirm-password">Confirm Password:</label>
+            <input type="password" id="confirm-password" name="confirm-password" required>
+
+            <label for="user-type">User Type:</label>
+            <select id="user-type" name="user-type" required>
+                <option value="customer">Customer</option>
+                <option value="driver">Driver</option>
+            </select>
+
+            <button type="submit">Sign Up</button>
         </form>
         <div class="footer">
-            <p>Don't have an account? <a href="/signup">Sign Up</a></p>
-            &copy; 2025 TableDash
+            Already have an account? <a href="/login">Login</a>
         </div>
     </div>
 </body>
