@@ -148,7 +148,7 @@ def login():
                 session['message'] = 'Unknown user type'
                 return redirect(url_for('login'))
         else:
-            session['message'] = 'Invalid credentials'
+                flash('Invalid email or password.', 'error')
     return render_template('login.html')
 
 @app.route('/customer_dashboard')
