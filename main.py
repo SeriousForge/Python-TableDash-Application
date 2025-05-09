@@ -74,37 +74,82 @@ def signup():
         confirm_password = request.form['confirm-password']
         user_type = request.form['user-type']
 
-        # Password confirmation check
+        # Common Data Validation
+        if not email or not password or not confirm_password or not user_type:
+            flash("All fields are required.", "error")
+            return redirect(url_for('signup'))
+
         if password != confirm_password:
             flash("Passwords do not match!", "error")
             return redirect(url_for('signup'))
+
+        # Retrieve shared address fields
+        street_address = request.form['street-address']
+        suite_number = request.form['suite-number']
+        gate_number = request.form['gate-number']
+        city = request.form['city']
+        state = request.form['state']
+        zip_code = request.form['zip-code']
 
         try:
             conn = database_connect()
             cursor = conn.cursor()
 
-            # Determine the next User_ID based on user_type
+            # Generate User_ID
             if user_type == 'customer':
                 cursor.execute("SELECT User_ID FROM user WHERE User_Type = 'customer' ORDER BY User_ID DESC LIMIT 1")
                 result = cursor.fetchone()
                 next_id = int(result[0][1:]) + 1 if result else 1
                 user_id = f"C{next_id:04}"
+                
+                # Retrieve Customer-specific fields
+                customer_fname = request.form['customer-fname']
+                customer_lname = request.form['customer-lname']
+                customer_phone = request.form['customer-phone']
+                
+                # Insert into user table
+                cursor.execute('''
+                    INSERT INTO user (User_ID, User_Email, User_Password, User_Name, User_Type)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (user_id, email, password, email.split('@')[0], user_type))
+                
+                # Insert into customer table
+                cursor.execute('''
+                    INSERT INTO customer (Customer_Fname, Customer_LName, Customer_Member, Customer_Phone_Number, User_ID)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (customer_fname, customer_lname, 0, customer_phone, user_id))
+
             elif user_type == 'driver':
                 cursor.execute("SELECT User_ID FROM user WHERE User_Type = 'driver' ORDER BY User_ID DESC LIMIT 1")
                 result = cursor.fetchone()
                 next_id = int(result[0][1:]) + 1 if result else 1
                 user_id = f"D{next_id:04}"
-            elif user_type == 'business':
-                cursor.execute("SELECT User_ID FROM user WHERE User_Type = 'business' ORDER BY User_ID DESC LIMIT 1")
-                result = cursor.fetchone()
-                next_id = int(result[0][1:]) + 1 if result else 1
-                user_id = f"R{next_id:04}"
 
-            # Insert new user with the custom ID (plaintext password)
+                # Retrieve Driver-specific fields
+                driver_name = request.form['driver-name']
+                vehicle = request.form['vehicle']
+                make = request.form['make']
+                model = request.form['model']
+                license_num = request.form['license-num']
+                vehicle_color = request.form['vehicle-color']
+                
+                # Insert into user table
+                cursor.execute('''
+                    INSERT INTO user (User_ID, User_Email, User_Password, User_Name, User_Type)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (user_id, email, password, email.split('@')[0], user_type))
+                
+                # Insert into driver table
+                cursor.execute('''
+                    INSERT INTO driver (Driver_Name, Driver_Address, Vehicle, Make, Model, License_Num, Vehicle_Color, User_ID)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (driver_name, street_address, vehicle, make, model, license_num, vehicle_color, user_id))
+
+            # Insert into address table for both user types
             cursor.execute('''
-                INSERT INTO user (User_ID, User_Email, User_Password, User_Name, User_Type)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (user_id, email, password, email.split('@')[0], user_type))
+                INSERT INTO address (Street_Address, Suite_Number, Gate_Number, City, State, ZIP_Code, User_ID, Address_Type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'home')
+            ''', (street_address, suite_number, gate_number, city, state, zip_code, user_id))
 
             conn.commit()
             flash("Account created successfully!", "success")
