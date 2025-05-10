@@ -201,9 +201,20 @@ def login():
 
 @app.route('/customer_dashboard')
 def customer_dashboard():
-    user_name = session.get('user') or 'Customer'
+    user_id = session.get('user_id')
     conn = database_connect()
     cursor = conn.cursor(dictionary=True)
+
+    # Fetch the customer's first and last name
+    cursor.execute("""
+        SELECT Customer_Fname, Customer_LName
+        FROM customer
+        WHERE User_ID = %s
+    """, (user_id,))
+    customer_info = cursor.fetchone()
+
+    # Default to 'Customer' if no name is found
+    user_name = f"{customer_info['Customer_Fname']} {customer_info['Customer_LName']}" if customer_info else 'Customer'
 
     cursor.execute("SELECT Restaurant_ID as id, Restaurant_Name as name, Restaurant_Rating as rating FROM restaurant")
     restaurants = cursor.fetchall()
@@ -221,7 +232,7 @@ def customer_dashboard():
 
     cursor.close()
     conn.close()
-    
+
     return render_template('customer_dashboard.html',
         user_name=user_name,
         featured_restaurants=restaurants,
